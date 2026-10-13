@@ -35,7 +35,7 @@
     {/each}
 
     <div class="pie">
-      <div class="avatar">{app.usuario[0]}</div>
+      <div class="avatar">{app.usuario[0] ?? '🌸'}</div>
       <div class="quien">
         <strong>{app.usuario}</strong>
         <span>Dueña</span>

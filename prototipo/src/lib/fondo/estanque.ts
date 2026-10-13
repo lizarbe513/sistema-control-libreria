@@ -44,6 +44,7 @@ interface PetaloFlotante {
 }
 
 const VIDA_ONDA = 3;
+const REF = 64; // radio de referencia de los sprites
 
 export class EscenaEstanque implements Escena {
   private w: number;
@@ -57,11 +58,17 @@ export class EscenaEstanque implements Escena {
   private agua: HTMLCanvasElement | null = null;
   private luces: { x: number; y: number; r: number; f: number; p: number }[] = [];
   private sprites = spritesPetalo();
+  // sprites prerenderizados: evitan crear degradados en cada cuadro
+  private hojas: HTMLCanvasElement[] = [];
+  private flores = new Map<string, HTMLCanvasElement>();
+  private luz: HTMLCanvasElement | null = null;
 
   constructor(o: OpcionesEscena) {
     this.w = o.w;
     this.h = o.h;
     this.calidad = o.calidad;
+    this.hojas = [this.pintarHoja(['#A9DDB4', '#5DB28A']), this.pintarHoja(['#9BD9B0', '#6DBF8F'])];
+    this.luz = this.pintarLuz();
     this.redimensionar(o.w, o.h);
   }
 
@@ -125,6 +132,95 @@ export class EscenaEstanque implements Escena {
     return c;
   }
 
+  private lienzo(tam: number) {
+    const c = document.createElement('canvas');
+    c.width = c.height = tam;
+    return c;
+  }
+
+  private pintarLuz() {
+    const c = this.lienzo(128);
+    const x = c.getContext('2d')!;
+    const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0, 'rgba(255,255,255,0.07)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g;
+    x.fillRect(0, 0, 128, 128);
+    return c;
+  }
+
+  /** Nenúfar de radio REF dentro de un lienzo con margen de 4px. */
+  private pintarHoja(verde: [string, string]) {
+    const c = this.lienzo(REF * 2 + 8);
+    const x = c.getContext('2d')!;
+    x.translate(REF + 4, REF + 4);
+    const g = x.createRadialGradient(-REF * 0.3, -REF * 0.3, 0, 0, 0, REF);
+    g.addColorStop(0, verde[0]);
+    g.addColorStop(1, verde[1]);
+    x.fillStyle = g;
+    x.beginPath();
+    x.moveTo(0, 0);
+    x.arc(0, 0, REF, 0.22, Math.PI * 2 - 0.22);
+    x.closePath();
+    x.fill();
+    x.strokeStyle = 'rgba(60,140,100,0.5)';
+    x.lineWidth = 1.5;
+    x.stroke();
+    x.strokeStyle = 'rgba(255,255,255,0.22)';
+    x.lineWidth = 1;
+    x.beginPath();
+    for (let i = 1; i < 9; i++) {
+      const a = 0.22 + (i * (Math.PI * 2 - 0.44)) / 9;
+      x.moveTo(0, 0);
+      x.lineTo(Math.cos(a) * REF * 0.85, Math.sin(a) * REF * 0.85);
+    }
+    x.stroke();
+    return c;
+  }
+
+  /** Flor con apertura `a` (cuantizada a 12 pasos) y radio REF. */
+  private spriteFlor(color: string, paso: number) {
+    const clave = `${color}${paso}`;
+    let c = this.flores.get(clave);
+    if (c) return c;
+    const a = paso / 12;
+    const r = REF;
+    c = this.lienzo(REF * 2 + 8);
+    const x = c.getContext('2d')!;
+    x.translate(REF + 4, REF + 4);
+    const capas: [number, number, number][] = [
+      [8, 1, 0],
+      [8, 0.75, Math.PI / 8],
+      [5, 0.5, 0.2],
+    ];
+    capas.forEach(([cantidad, tam, giro], ci) => {
+      for (let i = 0; i < cantidad; i++) {
+        const ang = (i * Math.PI * 2) / cantidad + giro;
+        const largo = r * tam * (0.3 + 0.7 * a) * 0.9;
+        const dist = largo * (0.25 + 0.35 * a);
+        x.save();
+        x.rotate(ang);
+        const g = x.createLinearGradient(0, 0, dist + largo * 0.6, 0);
+        g.addColorStop(0, '#FFF6F8');
+        g.addColorStop(1, ci === 2 ? '#FBCFDA' : color);
+        x.fillStyle = g;
+        x.strokeStyle = 'rgba(214,96,130,0.25)';
+        x.lineWidth = 1;
+        x.beginPath();
+        x.ellipse(dist, 0, largo * 0.55, largo * (0.22 + 0.08 * (1 - a)), 0, 0, Math.PI * 2);
+        x.fill();
+        x.stroke();
+        x.restore();
+      }
+    });
+    x.fillStyle = '#F4D03F';
+    x.beginPath();
+    x.arc(0, 0, r * 0.12 * (0.4 + a * 0.6), 0, Math.PI * 2);
+    x.fill();
+    this.flores.set(clave, c);
+    return c;
+  }
+
   clic(x: number, y: number) {
     for (const n of this.nenufares) {
       if (n.flor && Math.hypot(n.x - x, n.y - y) < n.r * 0.55) {
@@ -157,30 +253,29 @@ export class EscenaEstanque implements Escena {
     const { w, h } = this;
     if (this.agua) ctx.drawImage(this.agua, 0, 0, w, h);
 
-    // luces cáusticas
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    for (const l of this.luces) {
-      const x = l.x + Math.sin(t * l.f + l.p) * 60;
-      const y = l.y + Math.cos(t * l.f * 0.8 + l.p) * 40;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, l.r);
-      g.addColorStop(0, 'rgba(255,255,255,0.07)');
-      g.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(x - l.r, y - l.r, l.r * 2, l.r * 2);
+    // luces cáusticas (sprite escalado, sin degradados por cuadro)
+    if (this.luz) {
+      for (const l of this.luces) {
+        const x = l.x + Math.sin(t * l.f + l.p) * 60;
+        const y = l.y + Math.cos(t * l.f * 0.8 + l.p) * 40;
+        ctx.drawImage(this.luz, x - l.r, y - l.r, l.r * 2, l.r * 2);
+      }
     }
-    ctx.restore();
 
     // reflejos ondulantes
     ctx.strokeStyle = 'rgba(255,255,255,0.12)';
     ctx.lineWidth = 1.5;
+    ctx.beginPath();
     for (let i = 0; i < 7; i++) {
       const y0 = ((i + 0.5) / 7) * h + Math.sin(t * 0.3 + i) * 10;
       const x0 = ((i * 0.37) % 1) * w;
-      ctx.beginPath();
-      for (let x = x0 - 120; x < x0 + 120; x += 10) ctx.lineTo(x, y0 + Math.sin(x / 30 + t * 1.2 + i) * 2.5);
-      ctx.stroke();
+      for (let x = x0 - 120; x < x0 + 120; x += 12) {
+        const py = y0 + Math.sin(x / 30 + t * 1.2 + i) * 2.5;
+        if (x === x0 - 120) ctx.moveTo(x, py);
+        else ctx.lineTo(x, py);
+      }
     }
+    ctx.stroke();
 
     this.actualizarKois(ctx, dt, t);
     this.actualizarOndas(ctx, dt);
@@ -265,28 +360,9 @@ export class EscenaEstanque implements Escena {
 
     ctx.rotate(n.rot + inclinacion);
     ctx.scale(escala, escala * 0.96);
-    const g = ctx.createRadialGradient(-n.r * 0.3, -n.r * 0.3, 0, 0, 0, n.r);
-    const verde = n.tono > 0.5 ? ['#9BD9B0', '#6DBF8F'] : ['#A9DDB4', '#5DB28A'];
-    g.addColorStop(0, verde[0]);
-    g.addColorStop(1, verde[1]);
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.arc(0, 0, n.r, 0.22, Math.PI * 2 - 0.22);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(60,140,100,0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 9; i++) {
-      const a = 0.22 + (i * (Math.PI * 2 - 0.44)) / 9;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(a) * n.r * 0.85, Math.sin(a) * n.r * 0.85);
-      ctx.stroke();
-    }
+    const k = (n.r / REF) * ((REF + 4) / REF);
+    const tam = REF * 2 * k + 8 * k;
+    ctx.drawImage(this.hojas[n.tono > 0.5 ? 1 : 0], -tam / 2, -tam / 2, tam, tam);
     ctx.restore();
 
     if (n.flor) this.dibujarFlor(ctx, n, dt, t);
@@ -297,38 +373,12 @@ export class EscenaEstanque implements Escena {
     f.abierta += (f.objetivo - f.abierta) * Math.min(1, dt * 1.4);
     const a = f.abierta;
     const r = n.r * 0.62;
+    const paso = Math.round(a * 12);
+    const tam = ((REF * 2 + 8) * r) / REF;
     ctx.save();
     ctx.translate(n.x + Math.cos(n.rot + 2) * n.r * 0.15, n.y + Math.sin(n.rot + 2) * n.r * 0.15);
     ctx.rotate(t * 0.05 + n.tono * 6);
-    const capas: [number, number, number][] = [
-      [8, 1, 0],
-      [8, 0.75, Math.PI / 8],
-      [5, 0.5, 0.2],
-    ];
-    capas.forEach(([cantidad, tam, giro], ci) => {
-      for (let i = 0; i < cantidad; i++) {
-        const ang = (i * Math.PI * 2) / cantidad + giro;
-        const largo = r * tam * (0.3 + 0.7 * a);
-        const dist = largo * (0.25 + 0.35 * a);
-        ctx.save();
-        ctx.rotate(ang);
-        const g = ctx.createLinearGradient(0, 0, dist + largo * 0.6, 0);
-        g.addColorStop(0, '#FFF6F8');
-        g.addColorStop(1, ci === 2 ? '#FBCFDA' : f.color);
-        ctx.fillStyle = g;
-        ctx.strokeStyle = 'rgba(214,96,130,0.25)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.ellipse(dist, 0, largo * 0.55, largo * (0.22 + 0.08 * (1 - a)), 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
-      }
-    });
-    ctx.fillStyle = '#F4D03F';
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.12 * (0.4 + a * 0.6), 0, Math.PI * 2);
-    ctx.fill();
+    ctx.drawImage(this.spriteFlor(f.color, paso), -tam / 2, -tam / 2, tam, tam);
     ctx.restore();
   }
 

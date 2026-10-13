@@ -1,6 +1,32 @@
 <script lang="ts">
   import SelectorFondo from '../componentes/SelectorFondo.svelte';
-  import { app, guardar } from '../estado.svelte';
+  import { app, avisar, guardar, type AnimLibro } from '../estado.svelte';
+
+  const ANIMACIONES: { id: AnimLibro; nombre: string; emoji: string }[] = [
+    { id: 'aleatoria', nombre: 'Sorpresa', emoji: '🎲' },
+    { id: 'caida', nombre: 'Caída con rebote', emoji: '⬇️' },
+    { id: 'estante', nombre: 'Sale del estante', emoji: '📚' },
+    { id: 'pluma', nombre: 'Pluma', emoji: '🪶' },
+    { id: 'trompo', nombre: 'Trompo', emoji: '🌀' },
+    { id: 'pop', nombre: 'Pop elástico', emoji: '🫧' },
+    { id: 'volteo', nombre: 'Vuelta de campana', emoji: '🤸' },
+  ];
+
+  function nombrar(e: Event) {
+    app.usuario = (e.currentTarget as HTMLInputElement).value;
+    guardar('usuario', app.usuario);
+  }
+  function confirmarNombre(e: Event) {
+    const el = e.currentTarget as HTMLInputElement;
+    app.usuario = el.value.trim() || 'Rosa';
+    el.value = app.usuario;
+    guardar('usuario', app.usuario);
+  }
+  function elegirAnimacion(id: AnimLibro) {
+    app.calma.animLibro = id;
+    guardar('calma', app.calma);
+    avisar('Se verá la próxima vez que busques un libro');
+  }
 
   const OPCIONES = [
     { clave: 'petalosRadio', nombre: 'Pétalos de la radio', detalle: 'Caen pétalos (o chispitas de noche) mientras suena la música' },
@@ -15,6 +41,14 @@
 </script>
 
 <div class="ajustes" data-vacio>
+  <section class="vidrio bloque">
+    <h2 class="titulo-seccion">Mi perfil</h2>
+    <label class="campo">
+      <span class="atenuado">¿Cómo te llamas?</span>
+      <input type="text" maxlength="24" value={app.usuario} oninput={nombrar} onblur={confirmarNombre} onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+    </label>
+  </section>
+
   <section class="vidrio bloque">
     <h2 class="titulo-seccion">Fondo animado</h2>
     <p class="atenuado">Elige el ambiente. Interactúa con los espacios vacíos del fondo: ¡cada uno esconde algo!</p>
@@ -34,9 +68,61 @@
       </label>
     {/each}
   </section>
+
+  <section class="vidrio bloque">
+    <h2 class="titulo-seccion">Cómo aparece el libro</h2>
+    <p class="atenuado">Elige una entrada, o deja «Sorpresa» para que cambie cada vez.</p>
+    <div class="anims">
+      {#each ANIMACIONES as a}
+        <button class="chip" class:activo={app.calma.animLibro === a.id} onclick={() => elegirAnimacion(a.id)}>{a.emoji} {a.nombre}</button>
+      {/each}
+    </div>
+  </section>
 </div>
 
 <style>
+  .campo {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .campo input {
+    font: inherit;
+    font-weight: 700;
+    font-size: 18px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    border: 2px solid var(--linea);
+    background: var(--surface);
+    color: var(--text);
+    max-width: 320px;
+    user-select: text;
+  }
+  .campo input:focus {
+    outline: none;
+    border-color: var(--primary);
+  }
+  .anims .chip {
+    padding: 9px 14px;
+    font-size: 14px;
+    background: var(--surface);
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.2s;
+  }
+  .anims .chip:hover {
+    transform: translateY(-1px);
+  }
+  .anims .chip.activo {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+  }
+  .anims {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
   .ajustes {
     display: flex;
     flex-direction: column;

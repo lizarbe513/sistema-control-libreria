@@ -3,7 +3,7 @@
   --bg: #fdeff2;
   --surface: #ffffff;
   --surface-2: #fff7f9;
-  --surface-glass: rgba(255, 255, 255, 0.72);
+  --surface-glass: rgba(255, 255, 255, 0.82);
   --primary: #f27a9b;
   --primary-strong: #e5587f;
   --primary-soft: #fbd3de;
@@ -36,7 +36,7 @@
   --bg: #1e1a33;
   --surface: #2c2648;
   --surface-2: #352e57;
-  --surface-glass: rgba(44, 38, 72, 0.66);
+  --surface-glass: rgba(44, 38, 72, 0.78);
   --primary: #ff9dbb;
   --primary-strong: #ffb8cd;
   --primary-soft: #4a3a66;
@@ -197,4 +197,11 @@ button {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Rendimiento: el desenfoque de vidrio se recalcula en cada cuadro del fondo animado
+   (3× más lento). Con fondo animado se reemplaza por un vidrio más opaco. */
+:root:not([data-fondo='quieto']) * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }

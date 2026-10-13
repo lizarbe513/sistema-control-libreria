@@ -21,7 +21,7 @@
 
 <div class="movil shell" data-vacio>
   <header class="cabecera" data-vacio>
-    <div class="avatar">{app.usuario[0]}</div>
+    <div class="avatar">{app.usuario[0] ?? '🌸'}</div>
     <div class="hola">
       <span>Librería SIGLO XXI</span>
       <strong>Hola, {app.usuario} 🌸</strong>

@@ -36,6 +36,16 @@
   let rotUsuario = 0;
   let arrastrando = false;
   let t = 0;
+  // entradas con resorte (todas menos la caída): desplazamiento x, escala y volteo
+  type Entrada = 'caida' | 'estante' | 'pluma' | 'trompo' | 'pop' | 'volteo';
+  let modo: Entrada = 'caida';
+  let ox = 0;
+  let vox = 0;
+  let esc = 1;
+  let vesc = 0;
+  let inc = 0;
+  let vinc = 0;
+  let ultimaEntrada: Entrada | null = null;
   let calma = 0; // 0 → recién llegado, 1 → flotando tranquilo
 
   let renderer: THREE.WebGLRenderer | null = null;
@@ -175,17 +185,53 @@
     abrir = 0;
     rotUsuario = 0;
     calma = 0;
+    ox = vox = vinc = vesc = vy = vgiro = 0;
+    inc = 0;
+    esc = 1;
+    y = 0;
+    giro = 0;
+    asentado = true;
     if (app.calma.animaciones) {
-      y = 3.4;
-      vy = 0;
+      modo = elegirEntrada();
       asentado = false;
-      giro = -Math.PI * 1.3;
-      vgiro = 0;
-    } else {
-      y = 0;
-      asentado = true;
-      giro = 0;
+      switch (modo) {
+        case 'caida':
+          y = 3.4;
+          giro = -Math.PI * 1.3;
+          break;
+        case 'estante': // sale deslizándose de un estante a la derecha
+          ox = 4.2;
+          giro = 0.9;
+          inc = 0.25;
+          break;
+        case 'pluma': // baja despacio, balanceándose
+          y = 3.4;
+          ox = 1.2;
+          giro = 1.6;
+          break;
+        case 'trompo': // aparece girando rápido y se frena
+          esc = 0;
+          giro = -Math.PI * 5;
+          break;
+        case 'pop': // brota con un golpecito elástico
+          esc = 0;
+          giro = 0.5;
+          break;
+        case 'volteo': // vuelta de campana hacia delante
+          inc = -Math.PI * 2;
+          y = 0.8;
+          esc = 0.6;
+          break;
+      }
     }
+  }
+
+  function elegirEntrada(): Entrada {
+    const todas: Entrada[] = ['caida', 'estante', 'pluma', 'trompo', 'pop', 'volteo'];
+    const fija = app.calma.animLibro;
+    if (fija && fija !== 'aleatoria') return fija;
+    const otras = todas.filter((m) => m !== ultimaEntrada);
+    return (ultimaEntrada = otras[Math.floor(Math.random() * otras.length)]);
   }
 
   function chispas() {
@@ -203,8 +249,8 @@
 
   function paso(dt: number) {
     t += dt;
-    // caída con rebotes
-    if (!asentado) {
+    // caída con rebotes, o resortes para las demás entradas
+    if (!asentado && modo === 'caida') {
       vy -= GRAVEDAD * dt;
       y += vy * dt;
       if (y <= 0) {
@@ -216,6 +262,22 @@
           asentado = true;
           vy = 0;
         } else vy = impacto * REBOTE;
+      }
+    } else if (!asentado) {
+      const suave = modo === 'pluma';
+      vy += (-(suave ? 7 : 40) * y - (suave ? 4.2 : 9) * vy) * dt;
+      y += vy * dt;
+      vox += (-(suave ? 5 : 30) * ox - (suave ? 1.6 : 7) * vox) * dt;
+      ox += vox * dt;
+      vesc += (-(modo === 'pop' ? 90 : 40) * (esc - 1) - (modo === 'pop' ? 7 : 9) * vesc) * dt;
+      esc += vesc * dt;
+      vinc += (-24 * inc - 6.5 * vinc) * dt;
+      inc += vinc * dt;
+      if (Math.abs(y) + Math.abs(ox) + Math.abs(esc - 1) + Math.abs(inc) + Math.abs(giro) < 0.05 && Math.abs(vy) + Math.abs(vox) + Math.abs(vgiro) < 0.2) {
+        y = ox = inc = giro = 0;
+        esc = 1;
+        asentado = true;
+        if (modo !== 'pluma') chispas();
       }
     } else {
       calma = Math.min(1, calma + dt * 0.6);
@@ -236,14 +298,15 @@
       const vaiven = Math.sin(t * 0.45) * 0.28 * calma * (1 - e);
       const sy = 1 - aplast;
       const sxz = 1 + aplast * 0.6;
-      grupo.scale.set(sxz, sy, sxz);
-      grupo.position.set(e * ancho * 0.48, y + flotar - (alto / 2) * (1 - sy), 0);
-      grupo.rotation.set(0.08 * (1 - e) + Math.sin(t * 0.7) * 0.03 * calma, 0.38 * (1 - e * 0.85) + giro + vaiven + rotUsuario, Math.sin(t * 0.9) * 0.02 * calma);
+      grupo.scale.set(sxz * esc, sy * esc, sxz * esc);
+      grupo.position.set(e * ancho * 0.48 + ox, y + flotar - (alto / 2) * (1 - sy), 0);
+      grupo.rotation.set(inc + 0.08 * (1 - e) + Math.sin(t * 0.7) * 0.03 * calma, 0.38 * (1 - e * 0.85) + giro + vaiven + rotUsuario, Math.sin(t * 0.9) * 0.02 * calma - vox * 0.08);
       bisagra.rotation.y = -2.45 * e;
       const mat = sombra.material as THREE.MeshBasicMaterial;
       mat.opacity = 0.55 * Math.max(0.15, 1 - y / 3.4);
       sombra.scale.setScalar(Math.max(0.5, 1 - y * 0.12) * (1 + e * 0.5));
       sombra.position.x = grupo.position.x;
+      sombra.visible = esc > 0.05;
     }
     for (let i = brillos.length - 1; i >= 0; i--) {
       const b = brillos[i];

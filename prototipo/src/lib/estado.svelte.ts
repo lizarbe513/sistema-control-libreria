@@ -3,6 +3,7 @@ import type { Libro } from './datos';
 
 export type Vista = 'inicio' | 'buscar' | 'vender' | 'encargos' | 'reportes' | 'asistente' | 'ajustes';
 export type FondoId = 'petalos' | 'estanque' | 'cielo';
+export type AnimLibro = 'aleatoria' | 'caida' | 'estante' | 'pluma' | 'trompo' | 'pop' | 'volteo';
 export type FondoOpcion = FondoId | 'hora' | 'quieto';
 
 const leer = <T>(clave: string, defecto: T): T => {
@@ -26,16 +27,18 @@ const reducirMovimiento =
   typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export const app = $state({
-  usuario: 'Rosa',
+  usuario: leer('usuario', 'Rosa'),
   vista: 'inicio' as Vista,
   consulta: '',
   seleccionado: null as Libro | null,
   fondo: leer<FondoOpcion>('fondo', reducirMovimiento ? 'quieto' : 'petalos'),
-  calma: leer('calma', {
+  calma: {
     petalosRadio: !reducirMovimiento,
     rendimiento: false,
     animaciones: !reducirMovimiento,
-  }),
+    animLibro: 'aleatoria' as AnimLibro,
+    ...leer<Record<string, unknown>>('calma', {}),
+  },
   radio: { sonando: false, pista: 0, volumen: 0.6 },
   libretaAbierta: false,
   fichaMovil: false,
