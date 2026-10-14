@@ -160,6 +160,36 @@ cobrar), «Ventas del día» con selector de fecha y anulación, «Hoy» en Inic
 Al confirmar cae una lluvia breve de corazones y pétalos (si las animaciones están activas).
 El día de «hoy» es el **día local**: la interfaz convierte el día a instantes UTC y el núcleo no sabe de zonas horarias.
 
+## Encargos y clientes (hito 4)
+
+**Estados:** pendiente → pedido al proveedor → llegó → avisado → entregado / cancelado. Entre los activos se puede mover
+libremente (botón «→ siguiente» o arrastrando la tarjeta en el tablero); cada paso guarda su fecha. **«Entregado» solo
+ocurre al registrar la venta** («Vender y entregar» precarga Vender con el libro, el cliente y el adelanto).
+
+**Adelanto:** opcional al encargar, con su método de pago. Se guarda en `encargo_pagos` y **cuenta en la caja del día en
+que se recibió** (el resumen por método suma pagos de ventas + adelantos). Al entregar, la venta guarda `adelanto_cent`
+y solo se cobra el saldo (el redondeo de efectivo trata el adelanto como parte no efectivo). Al cancelar se elige si se
+devolvió: la devolución es una fila negativa con la fecha de hoy. Anular la venta de una entrega reabre el encargo
+(«avisado») con su adelanto.
+
+**¿Lo encargamos?:** en Buscar (sin resultados) precarga el título buscado; en la ficha de un libro agotado, el libro.
+El encargo puede ser de un libro del inventario o escrito a mano; luego se enlaza con un libro.
+
+**Carta con sello de cera:** al ingresar stock de un libro que alguien esperaba (pendiente/pedido) aparece la carta con
+«Marcar como llegó» y «Avisar por WhatsApp». Al dar de alta un libro nuevo, la carta pregunta si es el que encargaron
+cuando un encargo sin libro tiene un título parecido (normalizado, contención o Jaro-Winkler ≥ 0,92).
+
+**WhatsApp:** la URL `https://wa.me/<número>?text=…` se arma en Rust (un celular de 9 dígitos que empieza con 9 recibe
+el 51) y se abre con `tauri-plugin-opener` **desde Rust**: la interfaz no tiene permiso para abrir direcciones
+arbitrarias. La plantilla se edita en Ajustes con `{cliente}` (primer nombre), `{libro}`, `{tienda}` y `{saldo}`.
+Si el encargo estaba en «llegó», pasa a «avisado».
+
+**Clientes:** pestaña dentro de Encargos. Ficha editable (nombre, teléfono/WhatsApp, correo, tipo, notas) con su
+historial de compras (sin anuladas) y de encargos. La búsqueda encuentra el teléfono aunque se escriba sin espacios.
+
+**Libro apartado:** al agregar en Vender un libro que está apartado para el encargo de otro cliente (llegó/avisado) y
+no sobra stock, se avisa (no se impide).
+
 ## Estado de los hitos
 
 | Hito | Contenido | Estado |
@@ -167,15 +197,15 @@ El día de «hoy» es el **día local**: la interfaz convierte el día a instant
 | 1. Cimientos | Workspace, base cifrada, carpeta portable, llavero, primer arranque, desbloquear, entrar con PIN, usuarias, preferencias | ✅ |
 | 2. Inventario y búsqueda | Libros, stock, categorías, etiquetas, ISBN por internet, portadas, búsqueda tolerante, tienda en bloques y plantillas en la base, vista «Libros», ubicación elegida en la tienda 3D | ✅ |
 | 3. Ventas | Carrito, tipos de cliente con %, descuentos, pago dividido, vuelto, redondeo en efectivo, anulación (Dueña), ventas del día | ✅ |
-| 4. Encargos y clientes | Fichas, estados, aviso por WhatsApp, aviso al ingresar stock | Pendiente |
+| 4. Encargos y clientes | Fichas con historial, tablero por estados, adelanto, aviso por WhatsApp, carta al ingresar stock, entrega desde Vender | ✅ |
 | 5. Reportes | Por período, más vendidos, cuadre de caja, exportar CSV | Pendiente |
 | 6. Respaldos y configuración | Respaldo automático y manual, restaurar | Pendiente |
 | 7. Celular | Servidor LAN (axum), vinculación por QR, escaneo de ISBN, app Android | Pendiente (falta el SDK de Android en el equipo de desarrollo) |
 | 8. Asistente IA | Gemini + Groq, *function calling* sobre el inventario | Pendiente |
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 
-## Cómo se probó (hitos 1 a 3)
-- **`cargo test -p libreria-core`:** 43 tests, más 2 con red. Cubren:
+## Cómo se probó (hitos 1 a 4)
+- **`cargo test -p libreria-core`:** 50 tests, más 2 con red. Cubren:
   - el cifrado real y la llave equivocada;
   - PIN y bloqueo tras 5 intentos;
   - ventas: el orden de los descuentos, el redondeo solo en efectivo, el pago dividido con vuelto, que un pago
