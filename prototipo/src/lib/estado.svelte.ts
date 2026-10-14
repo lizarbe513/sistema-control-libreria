@@ -1,12 +1,12 @@
 // Estado global del prototipo (runas de Svelte 5).
 import type { Libro } from './datos';
 
-export type Vista = 'inicio' | 'buscar' | 'vender' | 'encargos' | 'reportes' | 'asistente' | 'ajustes';
+export type Vista = 'inicio' | 'buscar' | 'vender' | 'encargos' | 'reportes' | 'asistente' | 'tienda' | 'ajustes';
 export type FondoId = 'petalos' | 'estanque' | 'cielo';
 export type AnimLibro = 'aleatoria' | 'caida' | 'estante' | 'pluma' | 'trompo' | 'pop' | 'volteo';
 export type FondoOpcion = FondoId | 'hora' | 'quieto';
 
-const leer = <T>(clave: string, defecto: T): T => {
+export const leer = <T>(clave: string, defecto: T): T => {
   try {
     const v = localStorage.getItem(clave);
     return v ? (JSON.parse(v) as T) : defecto;

@@ -24,6 +24,7 @@
     flecha: 'M5 12h14 M13 6l6 6-6 6',
     izquierda: 'M15 6l-6 6 6 6',
     derecha: 'M9 6l6 6-6 6',
+    estante: 'M4 3h16v18H4z M4 9h16 M4 15h16 M7 5.5v2 M10 5.5v2 M8 11v2.5 M14 17v2',
     libro: 'M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z M4 21.5V5.5 M8 7h8',
     carrito: 'M3 4h2.5l2.2 11h10.6L21 7.5H6.4 M9 20h.01 M18 20h.01',
     nota: 'M5 3h11l3 3v15H5z M8 9h8 M8 13h8 M8 17h5',

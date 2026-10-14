@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { resolver, textoCorto } from '../tienda/modelo';
+  import { tienda } from '../tienda/tienda.svelte';
   import { flip } from 'svelte/animate';
   import { fly } from 'svelte/transition';
   import Icono from '../componentes/Icono.svelte';
   import { buscar } from '../busqueda';
-  import { CATEGORIAS, LIBROS, estantePorId, soles, type CategoriaId, type Libro } from '../datos';
+  import { CATEGORIAS, LIBROS, soles, type CategoriaId, type Libro } from '../datos';
   import { app, avisar } from '../estado.svelte';
   import { miniatura } from '../portada';
 
@@ -78,7 +80,7 @@
   {#if resultados.length}
     <div class="resultados" data-vacio>
       {#each resultados as l (l.id)}
-        {@const e = estantePorId(l.estante)}
+        {@const u = resolver(tienda.datos, l.ubicacion)}
         <button class="libro tarjeta" class:elegido={app.seleccionado?.id === l.id} onclick={() => elegir(l)} animate:flip={{ duration: 300 }}>
           <img src={miniatura(l)} alt="" />
           <div class="info">
@@ -87,7 +89,7 @@
             <div class="abajo">
               <span class="precio">{soles(l.precio)}</span>
               {#if l.stock > 0}
-                <span class="estante" style:background={e.color} style:color={e.fuerte}>Est. {l.estante}·{l.repisa}</span>
+                {#if u}<span class="estante" style:background={u.info.color} style:color={u.info.fuerte}>{textoCorto(u)}</span>{/if}
               {:else}
                 <span class="agotado">Agotado</span>
               {/if}

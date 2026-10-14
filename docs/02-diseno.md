@@ -72,7 +72,7 @@ consistente: el estante lila del mapa es el mismo lila de la etiqueta del libro.
 ▐ │ 🔍 Buscar │  │    │ │    │ │    │        │                │
 ▐ │ ＋ Vender │  └────┘ └────┘ └────┘        │ 📍 ESTANTE B   │
 L │ 📦 Encarg.│                              │    REPISA 3    │
-i │ 📊 Report.│                              │  [mini mapa]   │
+i │ 📊 Report.│                              │  [tienda 3D]   │
 b │ ✨ Asist. │                              │                │
 r │ ⚙ Ajustes │                              │ [Vender][Enc.] │
 e ├───────────┤                              │                │
@@ -107,7 +107,7 @@ Igual que la referencia:
 | Reportes | ✅ | ✅ (solo Dueña) | |
 | Asistente IA | ✅ | ✅ | chat |
 | Ajustes | ✅ | parcial | usuarios, mapa, tipos de cliente, IA, respaldos, calma, fondo |
-| Editor del mapa de la tienda | ✅ | — | |
+| Mi tienda (editor en bloques) | ✅ | — | ver C |
 | Vincular celular (QR) | ✅ | ✅ | |
 
 ---
@@ -163,15 +163,43 @@ lo miras, apreciando su diseño.
     `AnalyserNode`). Las estaciones online no lo permiten por CORS, así que ahí la cantidad es fija.
 - Los pétalos se dibujan en la misma capa del fondo animado (ver E).
 
-### C. Ubicación física: texto grande + mini mapa
-- **Tarjeta de ubicación:** 📍 **ESTANTE B · REPISA 3** en letras grandes (Nunito 800), sobre el color del estante.
-- **Mini mapa:** plano SVG de la tienda. El estante buscado **brilla con un pulso** y una línea punteada
-  animada va desde la caja hasta él. Los demás estantes quedan tenues.
-- **Editor del plano** (Ajustes, solo la Dueña):
-  - una cuadrícula donde se arrastran y redimensionan **estantes** (letra, nombre, color, número de repisas) y
-    **elementos fijos** (caja, entrada, ventana, mesa de exhibición);
-  - se hace una sola vez y se puede retocar cuando quiera.
-- **Al dar de alta** un libro, se elige el estante tocándolo en el mapa y luego la repisa (1…n).
+### C. Ubicación física: texto grande + tienda 3D en bloques
+El croquis de la tienda (`.referencia/screenshot-2026-10-13_12-10-15.png`) muestra un local de un solo piso
+con la fachada abierta a la calle, estantes de madera en U, cajas abiertas con libros, el mostrador, repisas
+exteriores en la vereda y **escaleras que suben** a la parte alta. Un plano 2D no alcanza, así que **la tienda
+se modela con bloques, como en Minecraft**.
+
+**Modelo**
+- Cuadrícula de celdas de 0,5 m (plantilla: 24 × 23 × 10, con la fachada en la fila 16).
+- Tipos de bloque: plataforma, escalera, **estantería**, **caja de libros**, mostrador, **repisa exterior**,
+  pared/columna y planta. Los de negrita guardan libros y pertenecen a un **estante** (nombre, tema y color).
+- **Un bloque de estantería = una repisa de un tramo.** La ubicación se calcula sola desde la geometría:
+  - **tramo**: columna del estante, de izquierda a derecha mirándolo de frente;
+  - **repisa**: posición en la columna, contada desde arriba.
+- Un libro guarda `estante + tramo + repisa`; en cajas basta el estante («Caja 2»).
+
+**Tarjeta de ubicación**
+- **ESTANTE A** en grande · «Tramo 2 · Repisa 3», sobre el color del estante, con el mini indicador de repisas.
+- **Tienda 3D** (solo lectura): la cámara vuela hasta el estante, el bloque exacto late y brilla, un pin flota
+  frente a él, los demás estantes se atenúan y unas **huellitas** animadas marcan el camino desde la vereda
+  (BFS sobre el piso libre). Se puede girar con el dedo o el mouse.
+- Sin WebGL o en modo rendimiento: **plano cenital SVG** generado desde los mismos bloques, con el mismo
+  resalte y camino.
+
+**Editor «Mi tienda»** (PC; en la app, solo la Dueña)
+- **Hotbar** con los 8 bloques + borrador (teclas 1–9).
+- **Clic** pone un bloque en la cara apuntada, **clic derecho** lo quita, **arrastrar con clic derecho** gira la
+  cámara, **rueda** hace zoom, **R** rota y **Shift + arrastrar** pone una fila.
+- Las estanterías miran hacia la cámara al colocarlas (como en Minecraft).
+- Fantasma translúcido que muestra dónde caerá el bloque, y etiqueta «Estante B · tramo 3 · repisa 2» al pasar
+  el mouse.
+- Vista general / **vista de planta**, deslizador de **altura visible** para editar la parte alta.
+- Panel de estantes: nombre, tema, color, conteo de tramos y repisas, «Nuevo» y borrar.
+- Deshacer / rehacer (`Ctrl+Z` / `Ctrl+Y`), guardado automático y «Restaurar plantilla SIGLO XXI».
+- **Plantilla inicial** traducida del croquis; es una aproximación que se ajusta en minutos.
+- **Rendimiento:** un `InstancedMesh` por tipo de bloque, texturas procedurales (sin archivos) y **dibujado bajo
+  demanda**: el editor quieto no consume GPU.
+- **Al dar de alta** un libro se elige la ubicación tocando el bloque en la tienda 3D.
 
 ### D. Libreta color arena (solo PC)
 - **Pestaña:** un marcapáginas de tela rosa asoma en el borde izquierdo. También se abre con `Ctrl+L`.
@@ -273,11 +301,12 @@ biblioteca/
 ### 4.2 Modelo de datos (resumen)
 | Tabla | Campos clave |
 |---|---|
-| `libros` | id, isbn?, codigo_interno?, titulo, autor, editorial, anio, sinopsis, portada_archivo, categoria_id, precio_cent, costo_cent, stock, stock_minimo, estante_id, repisa, creado, actualizado |
+| `libros` | id, isbn?, codigo_interno?, titulo, autor, editorial, anio, sinopsis, portada_archivo, categoria_id, precio_cent, costo_cent, stock, stock_minimo, estante_id, tramo, repisa, creado, actualizado |
 | `categorias` | id, nombre, color |
 | `etiquetas`, `libro_etiqueta` | etiquetas libres |
-| `estantes` | id, letra, nombre, color, x, y, w, h, rotacion, repisas |
-| `mapa_elementos` | id, tipo (caja/entrada/ventana/mesa), x, y, w, h |
+| `tienda` | ancho, fondo, alto, fachada (una sola fila) |
+| `bloques` | x, y, z (únicos), tipo, rot, estante_id? |
+| `estantes` | id, titulo, tema, color, fuerte |
 | `movimientos_stock` | id, libro_id, delta, motivo (alta/venta/anulación/ajuste), usuario_id, fecha |
 | `tipos_cliente` | id, nombre (Público/Profesor/Mayorista), descuento_pct |
 | `clientes` | id, nombre, telefono, correo, tipo_cliente_id, notas |
@@ -306,12 +335,15 @@ Sirve para **sentir** el diseño y ajustar colores, velocidades y tamaños antes
 visual se reutiliza en `ui/`.
 
 Incluye:
-1. Escritorio – Buscar: resultados → libro 3D con rebote → ubicación y mini mapa con pulso.
+1. Escritorio – Buscar: resultados → libro 3D (6 entradas: caída, estante, pluma, trompo, pop, volteo) →
+   ubicación con la tienda 3D, pin y camino.
 2. Radio con pétalos.
 3. Libreta desplegable (`Ctrl+L`).
 4. Inicio con saludo según la hora.
 5. Los 3 fondos animados con sus interacciones y el selector.
 6. Vista celular (ventana angosta).
+7. **Mi tienda**: editor en bloques con la plantilla del croquis.
+8. Perfil editable (nombre) en Ajustes.
 
 Para correrlo: `cd prototipo && npm install && npm run dev` (ver `prototipo/README.md`).
 

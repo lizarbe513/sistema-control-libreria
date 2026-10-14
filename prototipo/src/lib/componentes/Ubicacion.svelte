@@ -1,29 +1,47 @@
 <script lang="ts">
-  import { estantePorId, type Libro } from '../datos';
+  import type { Libro } from '../datos';
+  import { resolver } from '../tienda/modelo';
+  import { tienda } from '../tienda/tienda.svelte';
   import Icono from './Icono.svelte';
-  import MapaTienda from './MapaTienda.svelte';
+  import Tienda3D from './Tienda3D.svelte';
 
   let { libro }: { libro: Libro } = $props();
-  const estante = $derived(estantePorId(libro.estante));
+  const u = $derived(resolver(tienda.datos, libro.ubicacion));
+  const enCaja = $derived(u?.bloque.tipo === 'caja');
 </script>
 
-<section class="ubicacion" style:--c={estante.color} style:--f={estante.fuerte}>
+<section class="ubicacion" style:--c={u?.info.color ?? 'var(--surface-2)'} style:--f={u?.info.fuerte ?? 'var(--primary)'}>
   <div class="cabecera">
     <div class="pin"><Icono nombre="pin" tam={22} /></div>
-    <div class="texto">
-      <span class="donde">Está en</span>
-      <strong class="grande">ESTANTE {estante.id}</strong>
-      <span class="repisa">Repisa {libro.repisa} <small>de {estante.repisas}, desde arriba</small></span>
-      <span class="nombre">{estante.nombre}</span>
-    </div>
-    <!-- mini estante: qué repisa (contando desde arriba) -->
-    <div class="repisas" aria-label={`Repisa ${libro.repisa} de ${estante.repisas}, contando desde arriba`}>
-      {#each Array.from({ length: estante.repisas }, (_, i) => i + 1) as n}
-        <span class:esta={n === libro.repisa}></span>
-      {/each}
-    </div>
+    {#if u}
+      <div class="texto">
+        <span class="donde">Está en</span>
+        <strong class="grande">{u.info.titulo.toUpperCase()}</strong>
+        {#if enCaja}
+          <span class="repisa">Dentro de la caja</span>
+        {:else}
+          <span class="repisa">Tramo {u.tramo} · Repisa {u.repisa}</span>
+          <small class="nota">repisa contada desde arriba</small>
+        {/if}
+        {#if u.info.tema}<span class="nombre">{u.info.tema}</span>{/if}
+      </div>
+      {#if !enCaja}
+        <!-- mini estante: qué repisa (contando desde arriba) -->
+        <div class="repisas" aria-label={`Repisa ${u.repisa} de ${u.repisas}, contando desde arriba`}>
+          {#each Array.from({ length: u.repisas }, (_, i) => i + 1) as n}
+            <span class:esta={n === u.repisa}></span>
+          {/each}
+        </div>
+      {/if}
+    {:else}
+      <div class="texto">
+        <span class="donde">Ubicación</span>
+        <strong class="medio">Sin asignar</strong>
+        <span class="nombre">Su estante ya no existe en «Mi tienda». Asígnale uno nuevo.</span>
+      </div>
+    {/if}
   </div>
-  <MapaTienda estanteId={estante.id} />
+  <Tienda3D ubicacion={u} />
 </section>
 
 <style>
@@ -89,12 +107,16 @@
     line-height: 1.05;
     letter-spacing: 0.02em;
   }
+  .medio {
+    font-size: 22px;
+    font-weight: 800;
+  }
   .repisa {
     font-size: 18px;
     font-weight: 800;
   }
-  .repisa small {
-    font-size: 12px;
+  .nota {
+    font-size: 11px;
     font-weight: 600;
     color: var(--muted);
   }

@@ -11,6 +11,7 @@
     { id: 'encargos', nombre: 'Encargos', icono: 'encargos', badge: 3 },
     { id: 'reportes', nombre: 'Reportes', icono: 'reportes' },
     { id: 'asistente', nombre: 'Asistente', icono: 'asistente' },
+    { id: 'tienda', nombre: 'Mi tienda', icono: 'estante' },
     { id: 'ajustes', nombre: 'Ajustes', icono: 'ajustes' },
   ];
 </script>

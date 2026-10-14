@@ -19,6 +19,11 @@
       titulo: 'Reportes',
       texto: 'Ventas por día, semana y mes, libros y categorías más vendidos, cuadre de caja por método de pago y libros sin movimiento.',
     },
+    tienda: {
+      emoji: '🏪',
+      titulo: 'Mi tienda',
+      texto: 'El diseño de la tienda en bloques se hace desde la PC, con el mouse. Aquí en el celular verás el estante de cada libro en 3D al abrir su ficha.',
+    },
     asistente: {
       emoji: '✨',
       titulo: 'Asistente',
