@@ -7,9 +7,7 @@ const SERVICIO: &str = "siglo-xxi-libreria";
 
 /// Guarda la llave. Devuelve false si el llavero no está disponible (se pedirá la contraseña al abrir).
 pub fn guardar(id_carpeta: &str, llave: &Llave) -> bool {
-    keyring::Entry::new(SERVICIO, id_carpeta)
-        .and_then(|e| e.set_password(&llave.a_hex()))
-        .is_ok()
+    keyring::Entry::new(SERVICIO, id_carpeta).and_then(|e| e.set_password(&llave.a_hex())).is_ok()
 }
 
 /// La llave guardada para esta carpeta, si existe.

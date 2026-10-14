@@ -36,14 +36,7 @@ fn sugerida(app: &AppHandle) -> String {
 }
 
 fn describir(app: &AppHandle, fase: &Fase, llavero: bool) -> EstadoInicial {
-    let base = EstadoInicial {
-        fase: "configurar",
-        carpeta: None,
-        carpeta_sugerida: sugerida(app),
-        tienda: None,
-        usuaria: None,
-        llavero,
-    };
+    let base = EstadoInicial { fase: "configurar", carpeta: None, carpeta_sugerida: sugerida(app), tienda: None, usuaria: None, llavero };
     match fase {
         Fase::SinConfigurar => base,
         Fase::Bloqueada { carpeta, tienda } => EstadoInicial {

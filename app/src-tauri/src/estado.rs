@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use libreria_core::busqueda::Indice;
 use libreria_core::carpeta::{self, Libreria};
 use libreria_core::usuarios::{Intentos, Rol, Usuaria};
 use libreria_core::{Error, Result};
@@ -15,21 +16,39 @@ pub struct Abierta {
     pub lib: Libreria,
     pub sesion: Option<Usuaria>,
     pub intentos: Intentos,
+    /// Índice de búsqueda; se descarta cuando cambia el inventario y se rehace al buscar.
+    pub indice: Option<Indice>,
 }
 
 impl Abierta {
     pub fn nueva(lib: Libreria) -> Self {
-        Abierta {
-            lib,
-            sesion: None,
-            intentos: Intentos::default(),
+        Abierta { lib, sesion: None, intentos: Intentos::default(), indice: None }
+    }
+
+    pub fn indice(&mut self) -> Result<&Indice> {
+        if self.indice.is_none() {
+            self.indice = Some(Indice::construir(&self.lib.conn)?);
+        }
+        Ok(self.indice.as_ref().expect("índice recién construido"))
+    }
+
+    /// Solo la Dueña ve costos.
+    pub fn ve_costos(&self) -> bool {
+        self.sesion.as_ref().is_some_and(|u| u.rol == Rol::Duena)
+    }
+
+    /// La Dueña siempre; los vendedores, si ella lo permitió en Ajustes.
+    pub fn puede_editar_libros(&self) -> Result<&Usuaria> {
+        let u = self.usuaria()?;
+        if u.rol == Rol::Duena || vendedores_editan(&self.lib.conn) {
+            Ok(u)
+        } else {
+            Err(Error::Permiso("agregar o editar libros (pídeselo a la Dueña)".into()))
         }
     }
 
     pub fn usuaria(&self) -> Result<&Usuaria> {
-        self.sesion
-            .as_ref()
-            .ok_or_else(|| Error::Permiso("hacer esto sin iniciar sesión".into()))
+        self.sesion.as_ref().ok_or_else(|| Error::Permiso("hacer esto sin iniciar sesión".into()))
     }
 
     pub fn duena(&self, accion: &str) -> Result<&Usuaria> {
@@ -64,13 +83,7 @@ pub fn recordar_carpeta(app: &AppHandle, carpeta: &Path) {
         if let Some(dir) = ruta.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        let _ = std::fs::write(
-            ruta,
-            serde_json::to_string(&Recordada {
-                carpeta: carpeta.to_path_buf(),
-            })
-            .unwrap_or_default(),
-        );
+        let _ = std::fs::write(ruta, serde_json::to_string(&Recordada { carpeta: carpeta.to_path_buf() }).unwrap_or_default());
     }
 }
 
@@ -97,13 +110,17 @@ pub fn fase_inicial(app: &AppHandle) -> Fase {
         permitir_portadas(app, &lib);
         return Fase::Abierta(Box::new(Abierta::nueva(lib)));
     }
-    Fase::Bloqueada {
-        carpeta: rec.carpeta,
-        tienda: meta.tienda,
-    }
+    Fase::Bloqueada { carpeta: rec.carpeta, tienda: meta.tienda }
 }
 
 /// Las portadas se sirven por el protocolo de assets solo desde la carpeta activa.
 pub fn permitir_portadas(app: &AppHandle, lib: &Libreria) {
     let _ = app.asset_protocol_scope().allow_directory(lib.ruta_portadas(), false);
+}
+
+pub const CLAVE_VENDEDORES_EDITAN: &str = "vendedores_editan_libros";
+
+pub fn vendedores_editan(conn: &libreria_core::rusqlite::Connection) -> bool {
+    conn.query_row("SELECT valor FROM config WHERE clave = ?1", [CLAVE_VENDEDORES_EDITAN], |f| f.get::<_, String>(0))
+        .is_ok_and(|v| v == "1")
 }

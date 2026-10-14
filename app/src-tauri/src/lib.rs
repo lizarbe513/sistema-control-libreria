@@ -2,6 +2,7 @@
 
 mod comandos;
 mod estado;
+mod inventario;
 mod llavero;
 
 use std::sync::Mutex;
@@ -32,6 +33,25 @@ pub fn run() {
             comandos::usuaria_crear,
             comandos::usuaria_cambiar_pin,
             comandos::olvidar_llave,
+            inventario::categorias,
+            inventario::libros_buscar,
+            inventario::libro_obtener,
+            inventario::libro_guardar,
+            inventario::libro_desactivar,
+            inventario::stock_ajustar,
+            inventario::inventario_resumen,
+            inventario::isbn_consultar,
+            inventario::portada_desde_url,
+            inventario::portada_desde_archivo,
+            inventario::portada_quitar,
+            inventario::ruta_portadas,
+            inventario::tienda_cargar,
+            inventario::tienda_guardar,
+            inventario::plantillas_listar,
+            inventario::plantilla_guardar,
+            inventario::plantilla_borrar,
+            inventario::plantilla_defecto,
+            inventario::permiso_vendedores_editan,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar la Librería SIGLO XXI")

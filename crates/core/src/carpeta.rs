@@ -76,33 +76,17 @@ pub fn crear(carpeta: &Path, contrasena: &str, tienda: &str) -> Result<(Libreria
     fs::create_dir_all(carpeta.join(DIR_RESPALDOS))?;
     let sal = nueva_sal()?;
     let llave = Llave::derivar(contrasena, &sal)?;
-    let meta = Meta {
-        version: VERSION_META,
-        id: uuid::Uuid::new_v4().to_string(),
-        sal: hex::encode(sal),
-        tienda: tienda.into(),
-    };
+    let meta = Meta { version: VERSION_META, id: uuid::Uuid::new_v4().to_string(), sal: hex::encode(sal), tienda: tienda.into() };
     let conn = db::abrir(&carpeta.join(ARCHIVO_DB), &llave)?;
     fs::write(carpeta.join(ARCHIVO_META), serde_json::to_string_pretty(&meta)?)?;
-    Ok((
-        Libreria {
-            conn,
-            carpeta: carpeta.to_path_buf(),
-            meta,
-        },
-        llave,
-    ))
+    Ok((Libreria { conn, carpeta: carpeta.to_path_buf(), meta }, llave))
 }
 
 /// Abre con la llave guardada (llavero del sistema).
 pub fn abrir(carpeta: &Path, llave: &Llave) -> Result<Libreria> {
     let meta = leer_meta(carpeta)?;
     let conn = db::abrir(&carpeta.join(ARCHIVO_DB), llave)?;
-    Ok(Libreria {
-        conn,
-        carpeta: carpeta.to_path_buf(),
-        meta,
-    })
+    Ok(Libreria { conn, carpeta: carpeta.to_path_buf(), meta })
 }
 
 /// Abre con la contraseña maestra (otro PC, restauración, o llavero vacío). Devuelve también la llave.

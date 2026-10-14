@@ -19,9 +19,7 @@ impl Llave {
         let params = Params::new(64 * 1024, 3, 1, Some(32)).map_err(|e| Error::Cripto(e.to_string()))?;
         let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
         let mut llave = [0u8; 32];
-        argon
-            .hash_password_into(contrasena.as_bytes(), sal, &mut llave)
-            .map_err(|e| Error::Cripto(e.to_string()))?;
+        argon.hash_password_into(contrasena.as_bytes(), sal, &mut llave).map_err(|e| Error::Cripto(e.to_string()))?;
         Ok(Llave(llave))
     }
 
