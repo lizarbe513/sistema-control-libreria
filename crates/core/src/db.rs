@@ -16,6 +16,7 @@ fn migraciones() -> Migrations<'static> {
         M::up(include_str!("../migraciones/004_venta_cliente_nombre.sql")),
         M::up(include_str!("../migraciones/005_encargos.sql")),
         M::up(include_str!("../migraciones/006_encargo_precio.sql")),
+        M::up(include_str!("../migraciones/007_reportes.sql")),
     ])
 }
 

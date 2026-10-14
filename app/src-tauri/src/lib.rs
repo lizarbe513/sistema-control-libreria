@@ -5,6 +5,7 @@ mod encargos;
 mod estado;
 mod inventario;
 mod llavero;
+mod reportes;
 mod ventas;
 
 use std::sync::Mutex;
@@ -81,6 +82,8 @@ pub fn run() {
             encargos::whatsapp_plantilla,
             encargos::encargo_avisar_whatsapp,
             encargos::margen_encargos,
+            reportes::reporte,
+            reportes::reporte_exportar,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar la Librería SIGLO XXI")

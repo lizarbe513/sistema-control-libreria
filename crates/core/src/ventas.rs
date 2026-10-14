@@ -413,13 +413,15 @@ pub fn registrar(conn: &mut Connection, e: &VentaEntrada, quien: &Usuaria) -> Re
     // precios vigentes (el precio que manda la interfaz no se usa: lo que cobra es el de la base)
     let mut libros = Vec::with_capacity(e.items.len());
     for i in &e.items {
-        let (titulo, precio): (String, i64) = tx
-            .query_row("SELECT titulo, precio_cent FROM libros WHERE id = ?1 AND activo = 1", [i.libro_id], |f| Ok((f.get(0)?, f.get(1)?)))
+        let (titulo, precio, costo): (String, i64, i64) = tx
+            .query_row("SELECT titulo, precio_cent, costo_cent FROM libros WHERE id = ?1 AND activo = 1", [i.libro_id], |f| {
+                Ok((f.get(0)?, f.get(1)?, f.get(2)?))
+            })
             .optional()?
             .ok_or_else(|| Error::NoEncontrado("uno de los libros".into()))?;
-        libros.push((titulo, precio));
+        libros.push((titulo, precio, costo));
     }
-    let lineas: Vec<_> = e.items.iter().zip(&libros).map(|(i, (_, p))| (*p, i.cantidad, i.descuento)).collect();
+    let lineas: Vec<_> = e.items.iter().zip(&libros).map(|(i, (_, p, _))| (*p, i.cantidad, i.descuento)).collect();
     let calc = calcular(&lineas, tipo_pct, e.descuento)?;
 
     // tope de descuento a mano para vendedoras
@@ -490,10 +492,11 @@ pub fn registrar(conn: &mut Connection, e: &VentaEntrada, quien: &Usuaria) -> Re
             params![eid, id],
         )?;
     }
-    for ((i, (titulo, precio)), l) in e.items.iter().zip(&libros).zip(&calc.lineas) {
+    for ((i, (titulo, precio, costo)), l) in e.items.iter().zip(&libros).zip(&calc.lineas) {
         tx.execute(
-            "INSERT INTO venta_items (venta_id, libro_id, titulo, cantidad, precio_unit_cent, descuento_cent, total_cent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![id, i.libro_id, titulo, i.cantidad, precio, l.descuento_cent, l.total_cent],
+            "INSERT INTO venta_items (venta_id, libro_id, titulo, cantidad, precio_unit_cent, descuento_cent, total_cent, costo_unit_cent)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![id, i.libro_id, titulo, i.cantidad, precio, l.descuento_cent, l.total_cent, costo],
         )?;
         mover_stock(&tx, i.libro_id, -i.cantidad, "venta", &format!("venta #{id}"), Some(quien.id), true)?;
     }
