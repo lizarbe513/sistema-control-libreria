@@ -78,6 +78,10 @@
     if (nivel > tienda.datos.alto - 1) nivel = tienda.datos.alto - 1;
   });
   $effect(() => {
+    // si el estante elegido desaparece (por ejemplo, al borrar todos sus bloques), se suelta la selección
+    if (seleccionado && !tienda.datos.estantes.some((e) => e.id === seleccionado)) seleccionado = null;
+  });
+  $effect(() => {
     const id = seleccionado;
     escena?.fijarSeleccion(id ? tienda.datos.bloques.filter((b) => b.estante === id) : null, estanteSel?.fuerte);
   });
@@ -340,8 +344,35 @@
     setTimeout(() => (destello = -1), 450);
   }
 
+  // Espacio + clic derecho = desplazar la maqueta (como en Blender)
+  let espacio = $state(false);
+  function soltarTecla(e: KeyboardEvent) {
+    if (e.code === 'Space') {
+      espacio = false;
+      escena?.paneo(false);
+    }
+  }
+  const sinEspacio = () => {
+    espacio = false;
+    escena?.paneo(false);
+  };
+
   function tecla(e: KeyboardEvent) {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (e.code === 'Space') {
+      e.preventDefault(); // sin scroll ni clic en botones enfocados
+      if (!espacio) {
+        espacio = true;
+        escena?.paneo(true);
+      }
+      return;
+    }
+    if (e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const paso = e.shiftKey ? 2.5 : 1;
+      escena?.desplazar(e.key === 'ArrowUp' ? paso : e.key === 'ArrowDown' ? -paso : 0, e.key === 'ArrowRight' ? paso : e.key === 'ArrowLeft' ? -paso : 0);
+      return;
+    }
     const k = e.key.toLowerCase();
     const ctrl = e.ctrlKey || e.metaKey;
     if (ctrl && k === 'z') {
@@ -401,11 +432,11 @@
           ? '✂️ Dividir: clic en una junta del frente agrega o quita tramos y repisas'
           : relleno
             ? '▦ Relleno: clic en una punta y luego en la otra (apunta a una pared o bloque para subir)'
-            : 'Clic pone · clic derecho quita · arrastrar con clic derecho gira · rueda zoom · R rota',
+            : 'Clic pone · clic derecho quita · arrastrar con clic derecho gira · Espacio + clic derecho mueve · rueda zoom · R rota',
   );
 </script>
 
-<svelte:window onkeydown={tecla} />
+<svelte:window onkeydown={tecla} onkeyup={soltarTecla} onblur={sinEspacio} />
 
 <div class="editor" class:enfoque>
   <div class="escenario" class:vidrio={!enfoque} bind:this={contenedor}>
@@ -415,6 +446,7 @@
     <canvas
       bind:this={canvas}
       class:herramienta={modo !== 'construir'}
+      class:mano={espacio}
       onpointermove={mover}
       onpointerdown={presionar}
       onpointerup={soltar}
@@ -519,6 +551,9 @@
   }
   canvas.herramienta {
     cursor: pointer;
+  }
+  canvas.mano {
+    cursor: grab;
   }
   .aviso {
     position: absolute;

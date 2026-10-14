@@ -52,6 +52,33 @@ function ajustar(b: Bloque, t: Tienda, m: Medidas): Bloque | null {
   return z < m.largo + m.vereda ? { ...b, z } : null;
 }
 
+/**
+ * Normaliza la tienda: un estante sin bloques desaparece del todo (lista, cartel y color),
+ * y sus divisiones solo conservan las celdas que todavía existen.
+ */
+function limpiar(t: Tienda): Tienda {
+  const columnasDe = new Map<string, Set<string>>();
+  const celdasDe = new Map<string, Set<string>>();
+  for (const b of t.bloques) {
+    if (!b.estante) continue;
+    if (!columnasDe.has(b.estante)) columnasDe.set(b.estante, new Set());
+    if (!celdasDe.has(b.estante)) celdasDe.set(b.estante, new Set());
+    columnasDe.get(b.estante)!.add(`${b.x},${b.z}`);
+    celdasDe.get(b.estante)!.add(clave(b.x, b.y, b.z));
+  }
+  const estantes = t.estantes
+    .filter((e) => columnasDe.has(e.id))
+    .map((e) => {
+      const cols = columnasDe.get(e.id)!;
+      const celdas = celdasDe.get(e.id)!;
+      const inicioTramo = e.inicioTramo?.filter((k) => cols.has(k));
+      const tablas = e.tablas?.filter((k) => celdas.has(k));
+      const igual = (a?: string[], b?: string[]) => a?.length === b?.length;
+      return igual(inicioTramo, e.inicioTramo) && igual(tablas, e.tablas) ? e : { ...e, inicioTramo, tablas };
+    });
+  return estantes.length === t.estantes.length && estantes.every((e, i) => e === t.estantes[i]) ? t : { ...t, estantes };
+}
+
 function leerPlantillas(): Plantilla[] {
   const g = leer<{ v: number; lista: Plantilla[] } | null>('plantillas', null);
   return [INCLUIDA, ...(g && g.v === VERSION ? g.lista.filter((p) => p.id !== INCLUIDA.id) : [])];
@@ -84,7 +111,7 @@ class Almacen {
     this.pasado.push(this.datos);
     if (this.pasado.length > 100) this.pasado.shift();
     this.futuro = [];
-    this.datos = nuevo;
+    this.datos = limpiar(nuevo);
     this.marcar();
   }
 

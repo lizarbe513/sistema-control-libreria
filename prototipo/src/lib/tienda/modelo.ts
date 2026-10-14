@@ -6,6 +6,7 @@ export type TipoBloque =
   | 'plataforma'
   | 'pared'
   | 'escalera'
+  | 'escaleraPared'
   | 'baranda'
   | 'alfombra'
   // muebles para libros
@@ -47,6 +48,8 @@ export interface Estante {
   tema: string; // qué libros guarda
   color: string; // pastel
   fuerte: string; // tono intenso para resaltar
+  /** Cómo se numeran los tramos y las repisas. Por defecto: tramos de izquierda a derecha, repisas desde arriba. */
+  orden?: { tramos: 'izq' | 'der'; repisas: 'arriba' | 'abajo' };
   /** Letra visible (A, B…). El `id` no cambia nunca: los libros lo guardan. */
   letra?: string;
   /** Columnas ("x,z") donde empieza un tramo. Sin definir → división por defecto del tipo. */
@@ -110,7 +113,8 @@ const T = (
 export const CATALOGO: InfoTipo[] = [
   T('plataforma', 'Plataforma', '🟫', '#E2C49B', 'construccion'),
   T('pared', 'Pared / columna', '⬜', '#C9C2CF', 'construccion'),
-  T('escalera', 'Escalera', '🪜', '#C99A6B', 'construccion', { rota: true }),
+  T('escalera', 'Escalera de madera', '🪜', '#C99A6B', 'construccion', { rota: true }),
+  T('escaleraPared', 'Escalera de pared', '🧱', '#C9C2CF', 'construccion', { rota: true }),
   T('baranda', 'Baranda', '🚧', '#B98A5E', 'construccion', { rota: true }),
   T('alfombra', 'Alfombra', '🟥', '#F4B6C6', 'construccion', { pisable: true }),
   T('estanteria', 'Estantería', '📚', '#D6976A', 'libros', { guardaLibros: true, rota: true, terminos: ['Tramo', 'Repisa'], division: [2, 1] }),
@@ -257,7 +261,9 @@ export function compartimentos(t: Tienda, estanteId: string): Tramo[] {
     });
     if (actual.length) grupos.push(actual);
     tr.repisas = grupos.map((g) => tr.columnas.flatMap((c) => c.bloques.filter((b) => g.includes(b.y))));
+    if (e.orden?.repisas === 'abajo') tr.repisas.reverse();
   }
+  if (e.orden?.tramos === 'der') tramos.reverse();
   return tramos;
 }
 
@@ -398,7 +404,7 @@ export function plantillaSigloXXI(): Tienda {
     for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) for (let y = y0; y <= y1; y++) poner(x, y, z, tipo, rot, estante);
   };
 
-  const ALTO = 6; // repisas de los estantes de pared
+  const ALTO = 5; // repisas de los estantes de pared (unos 2,5 m)
   // columnas grises en las esquinas del fondo
   caja(0, 1, 0, 0, 'pared', 0, ALTO - 1);
   caja(22, 23, 0, 0, 'pared', 0, ALTO - 1);
@@ -456,10 +462,10 @@ export function plantillaSigloXXI(): Tienda {
   poner(15, 0, 10, 'gatito', 0);
   poner(1, 0, 9, 'lampara');
   poner(22, 0, 15, 'lampara');
-  poner(12, 6, 0, 'letrero', 0);
-  poner(6, 6, 0, 'flores', 0);
-  poner(17, 6, 0, 'flores', 0);
-  poner(20, 6, 0, 'reloj', 0);
+  poner(12, 5, 0, 'letrero', 0);
+  poner(6, 5, 0, 'flores', 0);
+  poner(17, 5, 0, 'flores', 0);
+  poner(20, 5, 0, 'reloj', 0);
   poner(12, 1, 15, 'pizarra', 0);
 
   const est = (id: string, titulo: string, tema: string, i: number): Estante => ({

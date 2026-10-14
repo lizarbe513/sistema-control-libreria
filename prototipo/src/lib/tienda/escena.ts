@@ -92,6 +92,19 @@ export class EscenaTienda {
       this.controles.enablePan = false;
       this.controles.maxDistance = 60;
     }
+    if (modo === 'editor') {
+      // Shift + rueda: sube o baja el punto de vista (útil para recorrer la parte alta)
+      canvas.addEventListener(
+        'wheel',
+        (e) => {
+          if (!e.shiftKey) return;
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          this.moverVertical(-Math.sign(e.deltaY) * 0.8);
+        },
+        { capture: true, passive: false },
+      );
+    }
     this.controles.addEventListener('start', () => (this.vuelo = null));
     this.controles.addEventListener('change', () => (this.sucio = true));
 
@@ -111,7 +124,7 @@ export class EscenaTienda {
     this.cursor.visible = false;
     this.cursorRelleno = new THREE.Mesh(
       new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshBasicMaterial({ color: '#F27A9B', transparent: true, opacity: 0.12, depthWrite: false }),
+      new THREE.MeshBasicMaterial({ color: '#F27A9B', transparent: true, opacity: 0.12, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     );
     this.cursorRelleno.visible = false;
     this.seleccion = new THREE.LineSegments(aristas.clone(), new THREE.LineBasicMaterial({ color: '#F27A9B', depthTest: false, transparent: true }));
@@ -444,6 +457,35 @@ export class EscenaTienda {
     const pos = centro.clone().add(new THREE.Vector3(fx * 14, 8.5, fz * 14)).add(lado);
     pos.y = Math.max(pos.y, 3);
     this.irA(pos, centro.clone(), false);
+  }
+
+  /** Espacio + clic derecho: el botón derecho desplaza en lugar de girar (como en Blender). */
+  paneo(activo: boolean) {
+    this.controles.mouseButtons.RIGHT = activo ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+  }
+
+  /** Desplaza cámara y punto de mira sobre el piso (adelante / derecha, en bloques). */
+  desplazar(adelante: number, derecha: number) {
+    this.vuelo = null;
+    const f = new THREE.Vector3();
+    this.camara.getWorldDirection(f);
+    f.y = 0;
+    if (f.lengthSq() < 1e-6) return;
+    f.normalize();
+    const r = new THREE.Vector3(-f.z, 0, f.x);
+    const d = f.multiplyScalar(adelante).add(r.multiplyScalar(derecha));
+    this.camara.position.add(d);
+    this.controles.target.add(d);
+    this.sucio = true;
+  }
+
+  moverVertical(dy: number) {
+    this.vuelo = null;
+    const y = Math.max(0, Math.min((this.tienda?.alto ?? 10) + 2, this.controles.target.y + dy));
+    const d = y - this.controles.target.y;
+    this.controles.target.y += d;
+    this.camara.position.y += d;
+    this.sucio = true;
   }
 
   private irA(pos: THREE.Vector3, mira: THREE.Vector3, inmediato: boolean) {

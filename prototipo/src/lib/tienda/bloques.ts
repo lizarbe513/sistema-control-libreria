@@ -419,6 +419,8 @@ export function crearRecursos(): Recursos {
   const cubo = geo(new THREE.BoxGeometry(1, 1, 1));
 
   // ── estanterías y puertas: cuerpo sin marco + piezas ──
+  // el cuerpo es completo (sin rendijas entre vecinos); los marcos sobresalen 3 milésimas, así ninguna cara
+  // comparte plano con otra (evita el parpadeo / z-fighting)
   const cuerpoEstante = geo(caja(1, 1, 0.9, 0, 0, -0.05));
   for (let v = 0; v < VARIANTES_REPISA; v++) {
     const frente = mat({ map: textura(pintarLibros(v + 1)) });
@@ -430,13 +432,16 @@ export function crearRecursos(): Recursos {
     defs.set(`puerta${v}`, { geo: cuerpoPuerta, mat: [maderaPuerta, maderaPuerta, maderaPuerta, maderaPuerta, ligas, maderaPuerta] });
   }
   const piezasDe = (familia: Familia, fondo: number, grosor: number) => {
+    const e = 0.003; // los marcos sobresalen un poco del cuerpo
+    const L = 1 + e * 2;
+    const F = fondo + e * 2;
     const p: Record<Pieza, THREE.BufferGeometry> = {
-      marcoIzq: caja(grosor, 1, fondo, -0.5 + grosor / 2),
-      marcoDer: caja(grosor, 1, fondo, 0.5 - grosor / 2),
-      marcoArr: caja(1, grosor, fondo, 0, 0.5 - grosor / 2),
-      marcoAbj: caja(1, grosor * 1.4, fondo, 0, -0.5 + (grosor * 1.4) / 2),
-      divisor: caja(grosor * 0.6, 1, fondo * 0.92, -0.5, 0, -fondo * 0.04),
-      tabla: caja(1, grosor * 0.55, fondo * 0.92, 0, 0.5, -fondo * 0.04),
+      marcoIzq: caja(grosor + e, L, F, -0.5 + (grosor - e) / 2),
+      marcoDer: caja(grosor + e, L, F, 0.5 - (grosor - e) / 2),
+      marcoArr: caja(L, grosor + e, F, 0, 0.5 - (grosor - e) / 2),
+      marcoAbj: caja(L, grosor * 1.4 + e, F, 0, -0.5 + (grosor * 1.4 - e) / 2),
+      divisor: caja(grosor * 0.6, 1, fondo * 0.9, -0.5, 0, -fondo * 0.05 + 0.01),
+      tabla: caja(1, grosor * 0.55, fondo * 0.9, 0, 0.5, -fondo * 0.05 + 0.01),
     };
     for (const k of PIEZAS) piezas.set(`${familia}:${k}`, { geo: geo(p[k]), mat: k.startsWith('marco') ? maderaMarco : madera });
   };
@@ -451,6 +456,12 @@ export function crearRecursos(): Recursos {
   defs.set('escalera', { geo: geo(mergeGeometries([escalon1, escalon2])!), mat: maderaClara });
   escalon1.dispose();
   escalon2.dispose();
+  // escalera de pared: la misma forma, en el material de la pared / columna
+  const peldano1 = caja(1, 0.5, 0.5, 0, -0.25, 0.25);
+  const peldano2 = caja(1, 1, 0.5, 0, 0, -0.25);
+  defs.set('escaleraPared', { geo: geo(mergeGeometries([peldano1, peldano2])!), mat: col('#E4DCE6') });
+  peldano1.dispose();
+  peldano2.dispose();
   defs.set(
     'baranda',
     compuesto([
