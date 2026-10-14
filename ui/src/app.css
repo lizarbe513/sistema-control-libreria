@@ -1,0 +1,207 @@
+/* ============ Tokens de diseño — Librería SIGLO XXI ============ */
+:root {
+  --bg: #fdeff2;
+  --surface: #ffffff;
+  --surface-2: #fff7f9;
+  --surface-glass: rgba(255, 255, 255, 0.82);
+  --primary: #f27a9b;
+  --primary-strong: #e5587f;
+  --primary-soft: #fbd3de;
+  --on-primary: #ffffff;
+  --text: #2b2b2b;
+  --muted: #8a8a8a;
+  --yellow: #fcefc7;
+  --lilac: #e9e3fb;
+  --mint: #ddf3e4;
+  --sky: #ddeffb;
+  --sand: #ead9b8;
+  --success: #4cb782;
+  --warning: #f2b24c;
+  --borde: rgba(255, 255, 255, 0.85);
+  --linea: #f6e3e8;
+  --sombra: 0 10px 30px rgba(242, 122, 155, 0.16);
+  --sombra-suave: 0 4px 14px rgba(242, 122, 155, 0.1);
+  --r-chip: 12px;
+  --r-tarjeta: 20px;
+  --r-panel: 28px;
+
+  color-scheme: light;
+  font-family: 'Nunito', system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-tema='noche'] {
+  --bg: #1e1a33;
+  --surface: #2c2648;
+  --surface-2: #352e57;
+  --surface-glass: rgba(44, 38, 72, 0.78);
+  --primary: #ff9dbb;
+  --primary-strong: #ffb8cd;
+  --primary-soft: #4a3a66;
+  --on-primary: #2a1f45;
+  --text: #f4eeff;
+  --muted: #b3a9cf;
+  --yellow: #5a4e2e;
+  --lilac: #433a6b;
+  --mint: #2f4a42;
+  --sky: #2e4058;
+  --borde: rgba(255, 255, 255, 0.08);
+  --linea: #3e3663;
+  --sombra: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --sombra-suave: 0 4px 14px rgba(0, 0, 0, 0.25);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg);
+  transition: background 0.6s ease;
+}
+
+/* Fondo quieto: imagen estática suave (sin animación) */
+:root[data-fondo='quieto'] body {
+  background:
+    radial-gradient(circle at 85% 8%, rgba(233, 227, 251, 0.9), transparent 40%),
+    radial-gradient(circle at 8% 95%, rgba(252, 239, 199, 0.8), transparent 40%),
+    linear-gradient(#fdf3f6, #fbe0e8);
+}
+
+#app {
+  height: 100%;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  outline-offset: 2px;
+}
+
+/* ============ Piezas reutilizables ============ */
+.vidrio {
+  background: var(--surface-glass);
+  backdrop-filter: blur(14px) saturate(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(1.15);
+  border: 1px solid var(--borde);
+  box-shadow: var(--sombra);
+  border-radius: var(--r-panel);
+}
+
+.tarjeta {
+  background: var(--surface);
+  border-radius: var(--r-tarjeta);
+  box-shadow: var(--sombra-suave);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-weight: 700;
+  transition:
+    transform 0.15s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.btn:active {
+  transform: scale(0.96);
+}
+.btn-primario {
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.btn-primario:hover {
+  background: var(--primary-strong);
+}
+.btn-suave {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+.btn-blanco {
+  background: var(--surface);
+  color: var(--primary-strong);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-chip);
+  font-size: 12px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--text) 75%, transparent);
+}
+
+.titulo-seccion {
+  font-size: 17px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.atenuado {
+  color: var(--muted);
+}
+
+/* La interfaz no se selecciona como texto al arrastrar sobre el fondo */
+.shell {
+  user-select: none;
+  -webkit-user-select: none;
+}
+.shell input,
+.shell textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Barras de desplazamiento finas y rosadas */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--primary) 45%, transparent) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Rendimiento: el desenfoque de vidrio se recalcula en cada cuadro del fondo animado
+   (3× más lento). Con fondo animado se reemplaza por un vidrio más opaco. */
+:root:not([data-fondo='quieto']) * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

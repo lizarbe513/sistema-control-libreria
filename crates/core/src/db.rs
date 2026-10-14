@@ -9,7 +9,10 @@ use crate::error::{Error, Result};
 use crate::llave::Llave;
 
 fn migraciones() -> Migrations<'static> {
-    Migrations::new(vec![M::up(include_str!("../migraciones/001_inicio.sql"))])
+    Migrations::new(vec![
+        M::up(include_str!("../migraciones/001_inicio.sql")),
+        M::up(include_str!("../migraciones/002_inventario.sql")),
+    ])
 }
 
 /// Abre (o crea) la base en `ruta` con la llave dada y la deja al día.
@@ -59,15 +62,21 @@ mod tests {
         let buena = Llave::derivar("contraseña buena", &sal).unwrap();
         {
             let c = abrir(&ruta, &buena).unwrap();
-            c.execute("INSERT INTO config (clave, valor) VALUES ('tienda', 'SIGLO XXI secreto')", []).unwrap();
+            c.execute("INSERT INTO config (clave, valor) VALUES ('tienda', 'SIGLO XXI secreto')", [])
+                .unwrap();
         }
         // el archivo no contiene el texto en claro
         let crudo = std::fs::read(&ruta).unwrap();
-        assert!(!crudo.windows(6).any(|w| w == b"SQLite"), "la cabecera no debe ser la de SQLite plano");
+        assert!(
+            !crudo.windows(6).any(|w| w == b"SQLite"),
+            "la cabecera no debe ser la de SQLite plano"
+        );
         assert!(!crudo.windows(17).any(|w| w == b"SIGLO XXI secreto"));
         // con la llave buena se lee; con la mala, error amable
         let c = abrir(&ruta, &buena).unwrap();
-        let v: String = c.query_row("SELECT valor FROM config WHERE clave='tienda'", [], |f| f.get(0)).unwrap();
+        let v: String = c
+            .query_row("SELECT valor FROM config WHERE clave='tienda'", [], |f| f.get(0))
+            .unwrap();
         assert_eq!(v, "SIGLO XXI secreto");
         drop(c);
         let mala = Llave::derivar("otra", &sal).unwrap();

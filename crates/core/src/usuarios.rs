@@ -94,7 +94,9 @@ pub fn obtener(conn: &Connection, id: i64) -> Result<Usuaria> {
 }
 
 pub fn listar(conn: &Connection) -> Result<Vec<Usuaria>> {
-    let mut st = conn.prepare(&format!("SELECT {COLUMNAS} FROM usuarios WHERE activo = 1 ORDER BY rol = 'vendedor', nombre"))?;
+    let mut st = conn.prepare(&format!(
+        "SELECT {COLUMNAS} FROM usuarios WHERE activo = 1 ORDER BY rol = 'vendedor', nombre"
+    ))?;
     let filas = st.query_map([], fila)?.collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(filas)
 }
@@ -110,13 +112,18 @@ pub fn verificar_pin(conn: &Connection, id: i64, pin: &str) -> Result<Usuaria> {
         .optional()?;
     let hash = hash.ok_or_else(|| Error::NoEncontrado("a esa persona".into()))?;
     let parsed = PasswordHash::new(&hash).map_err(|e| Error::Cripto(e.to_string()))?;
-    Argon2::default().verify_password(pin.as_bytes(), &parsed).map_err(|_| Error::PinIncorrecto)?;
+    Argon2::default()
+        .verify_password(pin.as_bytes(), &parsed)
+        .map_err(|_| Error::PinIncorrecto)?;
     obtener(conn, id)
 }
 
 pub fn cambiar_pin(conn: &Connection, id: i64, pin: &str) -> Result<()> {
     validar_pin(pin)?;
-    let n = conn.execute("UPDATE usuarios SET pin_hash = ?2 WHERE id = ?1 AND activo = 1", params![id, hash_pin(pin)?])?;
+    let n = conn.execute(
+        "UPDATE usuarios SET pin_hash = ?2 WHERE id = ?1 AND activo = 1",
+        params![id, hash_pin(pin)?],
+    )?;
     if n == 0 {
         return Err(Error::NoEncontrado("a esa persona".into()));
     }
@@ -131,7 +138,10 @@ pub fn guardar_preferencias(conn: &Connection, id: i64, cambios: &serde_json::Va
             a.insert(k.clone(), v.clone());
         }
     }
-    conn.execute("UPDATE usuarios SET preferencias = ?2 WHERE id = ?1", params![id, actual.to_string()])?;
+    conn.execute(
+        "UPDATE usuarios SET preferencias = ?2 WHERE id = ?1",
+        params![id, actual.to_string()],
+    )?;
     Ok(actual)
 }
 
@@ -203,7 +213,9 @@ mod tests {
         assert_eq!(verificar_pin(&c, duena.id, "1234").unwrap().rol, Rol::Duena);
         assert!(matches!(verificar_pin(&c, vend.id, "1234"), Err(Error::PinIncorrecto)));
         // el hash no es el PIN
-        let h: String = c.query_row("SELECT pin_hash FROM usuarios WHERE id = ?1", [duena.id], |f| f.get(0)).unwrap();
+        let h: String = c
+            .query_row("SELECT pin_hash FROM usuarios WHERE id = ?1", [duena.id], |f| f.get(0))
+            .unwrap();
         assert!(h.starts_with("$argon2id$") && !h.contains("1234"));
     }
 

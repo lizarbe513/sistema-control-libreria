@@ -40,6 +40,13 @@ impl Libreria {
     pub fn ruta_portadas(&self) -> PathBuf {
         self.carpeta.join(DIR_PORTADAS)
     }
+
+    /// Pasa los cambios del registro WAL al archivo principal, para que `libreria.db` quede completa
+    /// por sí sola (copiar la carpeta, respaldos). Se llama al cerrar la app.
+    pub fn consolidar(&self) -> Result<()> {
+        self.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+        Ok(())
+    }
 }
 
 /// ¿Esta carpeta ya tiene una librería?
@@ -69,17 +76,33 @@ pub fn crear(carpeta: &Path, contrasena: &str, tienda: &str) -> Result<(Libreria
     fs::create_dir_all(carpeta.join(DIR_RESPALDOS))?;
     let sal = nueva_sal()?;
     let llave = Llave::derivar(contrasena, &sal)?;
-    let meta = Meta { version: VERSION_META, id: uuid::Uuid::new_v4().to_string(), sal: hex::encode(sal), tienda: tienda.into() };
+    let meta = Meta {
+        version: VERSION_META,
+        id: uuid::Uuid::new_v4().to_string(),
+        sal: hex::encode(sal),
+        tienda: tienda.into(),
+    };
     let conn = db::abrir(&carpeta.join(ARCHIVO_DB), &llave)?;
     fs::write(carpeta.join(ARCHIVO_META), serde_json::to_string_pretty(&meta)?)?;
-    Ok((Libreria { conn, carpeta: carpeta.to_path_buf(), meta }, llave))
+    Ok((
+        Libreria {
+            conn,
+            carpeta: carpeta.to_path_buf(),
+            meta,
+        },
+        llave,
+    ))
 }
 
 /// Abre con la llave guardada (llavero del sistema).
 pub fn abrir(carpeta: &Path, llave: &Llave) -> Result<Libreria> {
     let meta = leer_meta(carpeta)?;
     let conn = db::abrir(&carpeta.join(ARCHIVO_DB), llave)?;
-    Ok(Libreria { conn, carpeta: carpeta.to_path_buf(), meta })
+    Ok(Libreria {
+        conn,
+        carpeta: carpeta.to_path_buf(),
+        meta,
+    })
 }
 
 /// Abre con la contraseña maestra (otro PC, restauración, o llavero vacío). Devuelve también la llave.
@@ -111,6 +134,12 @@ mod tests {
         assert!(matches!(abrir_con_contrasena(&c, "pétalos 2025"), Err(Error::LlaveIncorrecta)));
         // no se puede crear encima
         assert!(crear(&c, "otra contraseña", "X").is_err());
+        // al consolidar, el WAL queda vacío y la base principal completa
+        let lib = abrir(&c, &llave).unwrap();
+        lib.conn.execute("INSERT INTO config (clave, valor) VALUES ('x', 'y')", []).unwrap();
+        lib.consolidar().unwrap();
+        let wal = c.join(format!("{ARCHIVO_DB}-wal"));
+        assert!(!wal.exists() || std::fs::metadata(&wal).unwrap().len() == 0);
     }
 
     #[test]

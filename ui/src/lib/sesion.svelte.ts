@@ -1,0 +1,68 @@
+// Sesión: qué fase muestra la app (configurar, desbloquear, entrar o la tienda) y quién atiende.
+import { api, type EstadoInicial, type Usuaria } from './api';
+import { aplicarPreferencias, app, avisar, olvidarPreferencias, registrarGuardadoPreferencias } from './estado.svelte';
+
+export const sesion = $state({
+  cargando: true,
+  error: '' as string,
+  estado: null as EstadoInicial | null,
+  usuaria: null as Usuaria | null,
+});
+
+// Las preferencias que cambian se envían al backend, agrupadas cada medio segundo.
+let pendientes: Record<string, unknown> = {};
+let espera: ReturnType<typeof setTimeout> | undefined;
+registrarGuardadoPreferencias((clave, valor) => {
+  if (!sesion.usuaria) return;
+  pendientes[clave] = valor;
+  clearTimeout(espera);
+  espera = setTimeout(() => {
+    const lote = pendientes;
+    pendientes = {};
+    api.guardarPreferencias(lote).catch((e: Error) => avisar(`No se guardaron tus preferencias: ${e.message}`));
+  }, 500);
+});
+
+export const esDuena = () => sesion.usuaria?.rol === 'duena';
+
+export async function arrancar() {
+  sesion.cargando = true;
+  try {
+    aplicarEstado(await api.estadoInicial());
+  } catch (e) {
+    sesion.error = (e as Error).message;
+  } finally {
+    sesion.cargando = false;
+  }
+}
+
+/** Aplica la respuesta del backend (tras configurar, desbloquear o abrir una carpeta). */
+export function aplicarEstado(e: EstadoInicial) {
+  sesion.estado = e;
+  if (e.usuaria) entrarCon(e.usuaria);
+  else sesion.usuaria = null;
+  if (!e.llavero) avisar('Este equipo no tiene llavero: pedirá la contraseña maestra cada vez que se abra');
+}
+
+export function entrarCon(u: Usuaria) {
+  sesion.usuaria = u;
+  app.usuario = u.nombre;
+  aplicarPreferencias(u.preferencias);
+  if (sesion.estado) sesion.estado = { ...sesion.estado, fase: 'sesion', usuaria: u };
+}
+
+export async function cerrarSesion() {
+  clearTimeout(espera);
+  if (Object.keys(pendientes).length) {
+    await api.guardarPreferencias(pendientes).catch(() => {});
+    pendientes = {};
+  }
+  await api.cerrarSesion();
+  olvidarPreferencias();
+  sesion.usuaria = null;
+  app.usuario = '';
+  app.vista = 'inicio';
+  app.libretaAbierta = false;
+  app.enfoque = false;
+  if (sesion.estado) sesion.estado = { ...sesion.estado, fase: 'entrar', usuaria: null };
+}
