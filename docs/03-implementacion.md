@@ -221,6 +221,38 @@ Solo la Dueña (el núcleo lo exige, no solo la interfaz). Todo se calcula en `c
   Rust a la ruta que se elige en el diálogo de guardar (permiso `dialog:allow-save`), en UTF-8 con BOM para que Excel lea
   bien las tildes. Los textos que empiezan con `= + - @` se neutralizan (inyección de fórmulas) y las comas y comillas se escapan.
 
+## Respaldos y configuración (hito 6)
+
+**Formato:** un `.zip` (`respaldo-AAAAMMDDTHHMMSSZ-<tipo>.zip`, hora UTC; la interfaz la muestra en hora local) con la base
+(`libreria.db`, **sigue cifrada**: el zip es seguro aunque vaya a la nube y solo se abre con la contraseña maestra),
+`libreria.json`, las portadas, el QR de cobro y un manifiesto. Se escribe a un temporal y se renombra al final: nunca
+queda un zip a medias. Antes de copiar se hace un *checkpoint* del WAL y se copia con la app abierta, bajo el candado del estado.
+
+**Tipos:** *automático* (uno al día), *manual* y *de seguridad* (antes de restaurar o de cambiar la contraseña maestra).
+La retención (por defecto los últimos 14, configurable de 3 a 60) solo borra automáticos: los otros nunca se borran solos.
+
+**Destino:** siempre se guarda uno en `respaldos/` de la carpeta de datos y, si la Dueña eligió una **carpeta externa**
+(pendrive, OneDrive, Google Drive…), se copia también ahí. Si la carpeta externa no está disponible (pendrive
+desconectado) el respaldo interno se hace igual y se avisa. Un respaldo manual puede además guardarse en otra carpeta.
+
+**Cuándo:** un hilo en segundo plano revisa 20 s después de abrir y luego cada hora, y otra vez al cerrar la app; solo
+hace uno si pasaron 24 h. Ajustes muestra el último («Al día», amarillo o rojo), la lista, y la pantalla de Inicio le
+recuerda a la Dueña si no hay respaldo reciente o si los respaldos solo están en este PC.
+
+**Restaurar** (Ajustes → lista → «Restaurar…», o «Restaurar desde un archivo…»): en dos fases.
+1. *Preparar:* extrae a `.restaurando/` y **verifica abriendo la base con la contraseña** (si es incorrecta, el zip está
+   dañado o trae archivos ajenos —o rutas tipo *zip-slip*— no se toca nada y **no se pierde la sesión**).
+2. *Aplicar:* hace un respaldo de seguridad de lo actual, cierra la base, reemplaza base, `libreria.json`, portadas y QR, y
+   reabre con la contraseña del respaldo (el llavero se actualiza). Termina sin sesión: se vuelve a entrar con el PIN.
+En un **PC nuevo**, la bienvenida tiene «Restaurar desde un respaldo (.zip)»: elige el zip, la carpeta nueva y la contraseña.
+
+**Contraseña maestra:** Ajustes → Seguridad. Pide la actual (con límite de intentos), hace un respaldo de seguridad y
+re-cifra la base (`PRAGMA rekey`) **conservando la sal**, para que `libreria.json` nunca quede desfasado de la base si algo
+se corta. Los respaldos anteriores siguen pidiendo la contraseña con la que se hicieron.
+
+**«Olvidé mi PIN»:** en la pantalla de entrada, al elegir a la Dueña. Pide la contraseña maestra (mismo límite de
+intentos) y un PIN nuevo; el núcleo solo lo permite para una Dueña (a las vendedoras les cambia el PIN ella).
+
 ## Estado de los hitos
 
 | Hito | Contenido | Estado |
@@ -230,13 +262,13 @@ Solo la Dueña (el núcleo lo exige, no solo la interfaz). Todo se calcula en `c
 | 3. Ventas | Carrito, tipos de cliente con %, descuentos, pago dividido, vuelto, redondeo en efectivo, anulación (Dueña), ventas del día | ✅ |
 | 4. Encargos y clientes | Fichas con historial, tablero por estados, adelanto, aviso por WhatsApp, carta al ingresar stock, entrega desde Vender | ✅ |
 | 5. Reportes | Por período, más vendidos, categorías, ganancia, cuadre de caja, libros sin movimiento, exportar CSV | ✅ |
-| 6. Respaldos y configuración | Respaldo automático y manual, restaurar | Pendiente |
+| 6. Respaldos y configuración | Respaldo automático y manual con carpeta externa, restaurar, cambiar la contraseña maestra, «olvidé mi PIN» | ✅ |
 | 7. Celular | Servidor LAN (axum), vinculación por QR, escaneo de ISBN, app Android | Pendiente (falta el SDK de Android en el equipo de desarrollo) |
 | 8. Asistente IA | Gemini + Groq, *function calling* sobre el inventario | Pendiente |
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 
-## Cómo se probó (hitos 1 a 5)
-- **`cargo test -p libreria-core`:** 54 tests, más 2 con red. Cubren:
+## Cómo se probó (hitos 1 a 6)
+- **`cargo test -p libreria-core`:** 63 tests, más 2 con red. Cubren:
   - el cifrado real y la llave equivocada;
   - PIN y bloqueo tras 5 intentos;
   - ventas: el orden de los descuentos, el redondeo solo en efectivo, el pago dividido con vuelto, que un pago

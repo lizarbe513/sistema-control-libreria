@@ -100,21 +100,23 @@ fn reabrir(app: &AppHandle, fase: &mut Fase, carpeta: &Path, id: &str, tienda: &
     false
 }
 
-/// Restaura un respaldo sobre los datos actuales (solo la Dueña). Antes hace un respaldo de seguridad. Termina sin sesión.
+/// Restaura un respaldo sobre los datos actuales (solo la Dueña). Primero lo verifica con la contraseña (si falla, no se
+/// toca nada ni se pierde la sesión); luego hace un respaldo de seguridad de lo actual y reemplaza. Termina sin sesión.
 #[tauri::command]
 pub fn respaldo_restaurar(app: AppHandle, estado: State<Estado>, zip: String, contrasena: String) -> Res<EstadoInicial> {
     let mut fase = estado.0.lock().map_err(|_| Error::Validacion("Estado interno dañado".into()))?;
-    let (carpeta_dir, id_viejo, tienda) = match &*fase {
+    let (carpeta_dir, id_viejo, tienda, preparado) = match &*fase {
         Fase::Abierta(a) => {
             a.duena("restaurar un respaldo")?;
+            let preparado = respaldos::preparar(Path::new(&zip), &a.lib.carpeta, &contrasena)?;
             respaldos::hacer_de_seguridad(&a.lib)?;
-            (a.lib.carpeta.clone(), a.lib.meta.id.clone(), a.lib.meta.tienda.clone())
+            (a.lib.carpeta.clone(), a.lib.meta.id.clone(), a.lib.meta.tienda.clone(), preparado)
         }
         _ => return Err(Error::Validacion("La librería todavía no está abierta".into())),
     };
     // se suelta la conexión antes de reemplazar los archivos
     *fase = Fase::Bloqueada { carpeta: carpeta_dir.clone(), tienda: tienda.clone() };
-    match respaldos::restaurar_en(Path::new(&zip), &carpeta_dir, &contrasena) {
+    match respaldos::aplicar(preparado) {
         Ok(_) => {
             let (lib, llave) = carpeta::abrir_con_contrasena(&carpeta_dir, &contrasena)?;
             let en_llavero = llavero::guardar(&lib.meta.id, &llave);

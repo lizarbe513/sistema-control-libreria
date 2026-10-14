@@ -355,28 +355,54 @@ fn extraer(zip: &Path, staging: &Path) -> Result<Meta> {
     Ok(meta)
 }
 
-/// Restaura el zip en `destino` (una carpeta de datos existente o una nueva). Antes de tocar nada verifica que el
-/// respaldo se abre con `contrasena`; si algo falla, la carpeta queda como estaba. La base no debe estar abierta.
-pub fn restaurar_en(zip: &Path, destino: &Path, contrasena: &str) -> Result<Meta> {
+/// Un respaldo ya extraído y verificado (se abre con la contraseña), listo para reemplazar los datos.
+/// Si se suelta sin aplicar, se borra lo extraído: no queda nada a medias.
+pub struct Preparado {
+    staging: PathBuf,
+    destino: PathBuf,
+    pub meta: Meta,
+    aplicado: bool,
+}
+
+impl Drop for Preparado {
+    fn drop(&mut self) {
+        if !self.aplicado || self.staging.exists() {
+            limpiar(&self.staging);
+        }
+    }
+}
+
+/// Primera fase: extrae a `destino/.restaurando` y verifica que el respaldo se abre con `contrasena`. No toca los datos
+/// actuales, así que puede llamarse con la base abierta; si falla (contraseña mala, zip dañado…) nada cambió.
+pub fn preparar(zip: &Path, destino: &Path, contrasena: &str) -> Result<Preparado> {
     fs::create_dir_all(destino)?;
     let staging = destino.join(".restaurando");
-    let hecho = (|| -> Result<Meta> {
-        let meta = extraer(zip, &staging)?;
-        let sal = hex::decode(&meta.sal).map_err(|_| Error::Validacion("El respaldo está dañado (metadatos)".into()))?;
-        let llave = Llave::derivar(contrasena, &sal)?;
-        {
-            // se abre una copia de verdad: con la contraseña equivocada, o dañada, falla aquí y no se cambia nada
-            let c = db::abrir(&staging.join(ARCHIVO_DB), &llave)?;
-            c.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
-        }
-        for sufijo in ["-wal", "-shm"] {
-            let _ = fs::remove_file(staging.join(format!("{ARCHIVO_DB}{sufijo}")));
-        }
-        intercambiar(&staging, destino)?;
-        Ok(meta)
-    })();
-    limpiar(&staging);
-    hecho
+    let mut p = Preparado { staging: staging.clone(), destino: destino.to_path_buf(), meta: extraer(zip, &staging)?, aplicado: false };
+    let sal = hex::decode(&p.meta.sal).map_err(|_| Error::Validacion("El respaldo está dañado (metadatos)".into()))?;
+    let llave = Llave::derivar(contrasena, &sal)?;
+    {
+        // se abre una copia de verdad: con la contraseña equivocada, o dañada, falla aquí
+        let c = db::abrir(&staging.join(ARCHIVO_DB), &llave)?;
+        c.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
+    }
+    for sufijo in ["-wal", "-shm"] {
+        let _ = fs::remove_file(staging.join(format!("{ARCHIVO_DB}{sufijo}")));
+    }
+    p.aplicado = false;
+    Ok(p)
+}
+
+/// Segunda fase: reemplaza los datos de `destino` por los del respaldo. La base de `destino` no debe estar abierta.
+pub fn aplicar(mut p: Preparado) -> Result<Meta> {
+    intercambiar(&p.staging, &p.destino)?;
+    p.aplicado = true;
+    limpiar(&p.staging);
+    Ok(p.meta.clone())
+}
+
+/// Restaura el zip en `destino` (una carpeta de datos existente o una nueva) en las dos fases. La base no debe estar abierta.
+pub fn restaurar_en(zip: &Path, destino: &Path, contrasena: &str) -> Result<Meta> {
+    aplicar(preparar(zip, destino, contrasena)?)
 }
 
 fn intercambiar(staging: &Path, destino: &Path) -> Result<()> {
