@@ -3,6 +3,7 @@
 
 pub mod busqueda;
 pub mod carpeta;
+pub mod clientes;
 pub mod db;
 pub mod error;
 pub mod isbn;
@@ -11,6 +12,7 @@ pub mod llave;
 pub mod portadas;
 pub mod tienda;
 pub mod usuarios;
+pub mod ventas;
 
 pub use error::{Error, Result};
 

@@ -336,10 +336,30 @@ pub fn ajustar_stock(
         return invalido("Indica cuántos ejemplares sumar o restar");
     }
     let tx = conn.transaction()?;
-    let stock: Option<i64> = tx.query_row("SELECT stock FROM libros WHERE id = ?1 AND activo = 1", [id], |f| f.get(0)).optional()?;
-    let stock = stock.ok_or_else(|| Error::NoEncontrado("ese libro".into()))?;
+    mover_stock(&tx, id, delta, motivo, nota, usuario, true)?;
+    tx.commit()?;
+    obtener(conn, id, ver_costo)
+}
+
+/// Mueve el stock dentro de la transacción de quien llama y deja el movimiento. Nunca queda negativo.
+/// `solo_activo = false` permite devolver stock (anulaciones) de un libro que se dio de baja después de venderlo.
+pub(crate) fn mover_stock(
+    tx: &Transaction,
+    id: i64,
+    delta: i64,
+    motivo: &str,
+    nota: &str,
+    usuario: Option<i64>,
+    solo_activo: bool,
+) -> Result<()> {
+    let fila: Option<(i64, String)> = tx
+        .query_row("SELECT stock, titulo FROM libros WHERE id = ?1 AND (activo = 1 OR ?2 = 0)", params![id, solo_activo], |f| {
+            Ok((f.get(0)?, f.get(1)?))
+        })
+        .optional()?;
+    let (stock, titulo) = fila.ok_or_else(|| Error::NoEncontrado("ese libro".into()))?;
     if stock + delta < 0 {
-        return invalido(format!("Solo hay {stock} en stock: no puede quedar negativo"));
+        return invalido(format!("Solo hay {stock} de «{titulo}» en stock: no puede quedar negativo"));
     }
     tx.execute(
         "UPDATE libros SET stock = stock + ?2, actualizado = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1",
@@ -349,8 +369,7 @@ pub fn ajustar_stock(
         "INSERT INTO movimientos_stock (libro_id, delta, motivo, nota, usuario_id) VALUES (?1, ?2, ?3, ?4, ?5)",
         params![id, delta, motivo, nota.trim(), usuario],
     )?;
-    tx.commit()?;
-    obtener(conn, id, ver_costo)
+    Ok(())
 }
 
 /// Da de baja (no borra: queda el historial). El ISBN se libera para poder volver a darlo de alta.

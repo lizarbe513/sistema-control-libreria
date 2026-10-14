@@ -9,7 +9,11 @@ use crate::error::{Error, Result};
 use crate::llave::Llave;
 
 fn migraciones() -> Migrations<'static> {
-    Migrations::new(vec![M::up(include_str!("../migraciones/001_inicio.sql")), M::up(include_str!("../migraciones/002_inventario.sql"))])
+    Migrations::new(vec![
+        M::up(include_str!("../migraciones/001_inicio.sql")),
+        M::up(include_str!("../migraciones/002_inventario.sql")),
+        M::up(include_str!("../migraciones/003_ventas.sql")),
+    ])
 }
 
 /// Abre (o crea) la base en `ruta` con la llave dada y la deja al día.
