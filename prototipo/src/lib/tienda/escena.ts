@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { spriteBrillo } from '../fondo/sprites';
 import { BRILLOS, TIPOS_CON_TINTE, crearRecursos, familiaDe, pintarCartel, pintarMadera, type Pieza, type Recursos } from './bloques';
+import { crearAvatar, type Avatar } from './avatar';
+import { Caminante, OJOS, estanteCercano } from './caminar';
 import { FRENTE, clave, columnas, iniciosDeTramo, letraDe, tablasDe, tipoDeEstante, type Bloque, type Tienda } from './modelo';
 
 export type ModoEscena = 'editor' | 'visor';
@@ -49,6 +51,20 @@ export class EscenaTienda {
   private huellas: THREE.InstancedMesh | null = null;
   private puntosRuta: THREE.Vector3[] = [];
   private vuelo: { pos: THREE.Vector3; mira: THREE.Vector3 } | null = null;
+
+  // modo caminar
+  private caminante: Caminante | null = null;
+  private avatar: Avatar | null = null;
+  private yaw = 0;
+  private pitch = 0.35;
+  private dist = 7;
+  private primera = false;
+  private cercaId: string | null | undefined;
+  private tCerca = 0;
+  /** Teclas pulsadas (códigos de `KeyboardEvent.code`); las llena el editor. */
+  readonly teclas = new Set<string>();
+  /** Aviso al acercarse a un estante (id) o alejarse (null). */
+  onCerca: ((id: string | null) => void) | null = null;
 
   private raf = 0;
   /** Se dibuja solo cuando algo cambia; las animaciones (resalte, ruta, vuelo) piden cuadros continuos. */
@@ -107,6 +123,17 @@ export class EscenaTienda {
     }
     this.controles.addEventListener('start', () => (this.vuelo = null));
     this.controles.addEventListener('change', () => (this.sucio = true));
+    // al caminar, la rueda acerca o aleja la cámara que sigue a la bibliotecaria
+    canvas.addEventListener(
+      'wheel',
+      (e) => {
+        if (!this.caminante) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this.dist = Math.max(2.5, Math.min(16, this.dist * (1 + Math.sign(e.deltaY) * 0.1)));
+      },
+      { capture: true, passive: false },
+    );
 
     this.escena.add(new THREE.HemisphereLight(0xfff6f8, 0xe9c8b4, 2.1));
     const sol = new THREE.DirectionalLight(0xfff1e0, 1.5);
@@ -163,7 +190,7 @@ export class EscenaTienda {
     let ultimo = performance.now();
     const bucle = (ahora: number) => {
       this.raf = requestAnimationFrame(bucle);
-      const dt = Math.min(0.05, (ahora - ultimo) / 1000);
+      const dt = Math.min(this.caminante ? 0.3 : 0.05, (ahora - ultimo) / 1000);
       ultimo = ahora;
       if (!this.visible || document.hidden) return;
       this.paso(dt);
@@ -175,7 +202,7 @@ export class EscenaTienda {
   }
 
   private animando() {
-    return !!this.vuelo || this.resalte.visible || !!this.huellas;
+    return !!this.vuelo || this.resalte.visible || !!this.huellas || !!this.caminante;
   }
 
   private ajustar() {
@@ -229,6 +256,7 @@ export class EscenaTienda {
       this.mallas.push(malla);
       this.grupo.add(malla);
     }
+    this.caminante?.actualizar(t);
     this.colorear();
     this.ponerCarteles(t, visibles);
     this.ponerHalos(visibles);
@@ -456,6 +484,121 @@ export class EscenaTienda {
     this.irA(pos, centro.clone(), false);
   }
 
+  // ───────────── caminar ─────────────
+
+  get caminando() {
+    return !!this.caminante;
+  }
+  get enPrimeraPersona() {
+    return this.primera;
+  }
+
+  /** La bibliotecaria aparece en la vereda, al centro de la fachada, mirando hacia adentro. */
+  iniciarCaminar(nombre: string) {
+    const t = this.tienda;
+    if (!t || this.caminante) return;
+    this.caminante = new Caminante(t, t.ancho / 2 + 0.5, t.fachada + 2.5);
+    this.avatar = crearAvatar(nombre);
+    this.escena.add(this.avatar.grupo);
+    this.yaw = 0;
+    this.pitch = 0.4;
+    this.dist = 7;
+    this.primera = false;
+    this.cercaId = undefined;
+    this.controles.enabled = false;
+    this.vuelo = null;
+    for (const o of [this.cursor, this.cursorRelleno, this.seleccion]) o.visible = false;
+    this.paso(0.001);
+    this.camara.position.copy(this.posCamara());
+    this.sucio = true;
+  }
+
+  /** Vuelve al editor, con la cámara arriba de donde estaba la bibliotecaria. */
+  detenerCaminar() {
+    const c = this.caminante;
+    if (!c) return;
+    this.caminante = null;
+    this.escena.remove(this.avatar!.grupo);
+    this.avatar!.liberar();
+    this.avatar = null;
+    this.teclas.clear();
+    this.controles.enabled = true;
+    this.onCerca?.(null);
+    const mira = new THREE.Vector3(c.x, c.y, c.z);
+    const t = this.tienda;
+    const lejos = t ? Math.max(t.ancho, t.fondo) * 0.5 : 12;
+    this.irA(mira.clone().add(new THREE.Vector3(2, lejos * 0.9, lejos * 0.7)), mira, false);
+    this.sucio = true;
+  }
+
+  girarCamara(dx: number, dy: number) {
+    this.yaw -= dx * 0.006;
+    this.pitch = Math.max(this.primera ? -1.3 : -0.15, Math.min(this.primera ? 1.3 : 1.35, this.pitch + dy * 0.005));
+  }
+
+  alternarPrimeraPersona() {
+    this.primera = !this.primera;
+    if (this.primera) this.pitch = 0;
+    else this.pitch = 0.4;
+    this.sucio = true;
+  }
+
+  private posCamara() {
+    const c = this.caminante!;
+    const cabeza = new THREE.Vector3(c.x, c.y + 2.3, c.z);
+    if (this.primera) return new THREE.Vector3(c.x, c.y + OJOS, c.z);
+    const cp = Math.cos(this.pitch);
+    const p = cabeza.add(new THREE.Vector3(Math.sin(this.yaw) * cp, Math.sin(this.pitch), Math.cos(this.yaw) * cp).multiplyScalar(this.dist));
+    p.y = Math.max(0.5, p.y);
+    return p;
+  }
+
+  private pasoCaminar(dt: number) {
+    const c = this.caminante!;
+    const av = this.avatar!;
+    const k = this.teclas;
+    const adelante = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
+    const lado = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
+    // adelante = hacia donde mira la cámara (el sentido contrario a su posición respecto de la bibliotecaria)
+    const fx = -Math.sin(this.yaw);
+    const fz = -Math.cos(this.yaw);
+    const entrada = {
+      dir: [fx * adelante + -fz * lado, fz * adelante + fx * lado] as [number, number],
+      lento: k.has('ShiftLeft') || k.has('ShiftRight'),
+      salto: k.has('Space'),
+    };
+    // subpasos de ≤ 0,025 s: la velocidad es la misma aunque el equipo dibuje pocos cuadros por segundo
+    const n = Math.max(1, Math.ceil(dt / 0.025));
+    for (let i = 0; i < n; i++) c.paso(dt / n, entrada);
+    av.grupo.position.set(c.x, c.y, c.z);
+    av.grupo.rotation.y = c.giro;
+    av.cuerpo.visible = !this.primera;
+    av.grupo.children[1].visible = !this.primera;
+    av.animar(dt, c.rapidez, !c.suelo);
+
+    // cámara (en tercera persona, con un poco de resorte)
+    const objetivo = this.posCamara();
+    if (this.primera) {
+      this.camara.position.copy(objetivo);
+      const cp = Math.cos(this.pitch);
+      this.camara.lookAt(objetivo.x + fx * cp, objetivo.y - Math.sin(this.pitch), objetivo.z + fz * cp);
+    } else {
+      this.camara.position.lerp(objetivo, 1 - Math.exp(-14 * dt));
+      this.camara.lookAt(c.x, c.y + 2.2, c.z);
+    }
+    this.controles.target.set(c.x, c.y + 2.2, c.z);
+
+    this.tCerca -= dt;
+    if (this.tCerca <= 0 && this.tienda) {
+      this.tCerca = 0.15;
+      const id = estanteCercano(this.tienda, c);
+      if (id !== this.cercaId) {
+        this.cercaId = id;
+        this.onCerca?.(id);
+      }
+    }
+  }
+
   /** Espacio + clic derecho: el botón derecho desplaza en lugar de girar (como en Blender). */
   paneo(activo: boolean) {
     this.controles.mouseButtons.RIGHT = activo ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
@@ -665,13 +808,15 @@ export class EscenaTienda {
   private paso(dt: number) {
     this.reloj += dt;
     const t = this.reloj;
-    if (this.vuelo) {
+    if (this.caminante) {
+      this.pasoCaminar(dt);
+    } else if (this.vuelo) {
       const k = 1 - Math.exp(-3.2 * dt);
       this.camara.position.lerp(this.vuelo.pos, k);
       this.controles.target.lerp(this.vuelo.mira, k);
       if (this.camara.position.distanceTo(this.vuelo.pos) < 0.05) this.vuelo = null;
     }
-    this.controles.update();
+    if (!this.caminante) this.controles.update();
 
     if (this.resalte.visible) {
       const m = (this.resalte.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
@@ -704,6 +849,7 @@ export class EscenaTienda {
     this.mostrarRuta([]);
     this.limpiarExtras();
     this.fijarEtiquetas([]);
+    this.avatar?.liberar();
     this.escena.traverse((o) => {
       if ((o instanceof THREE.Mesh || o instanceof THREE.LineSegments) && !(o instanceof THREE.InstancedMesh)) {
         o.geometry.dispose();

@@ -43,6 +43,9 @@
   let uniendo = $state(false);
   let separarEn = $state<{ x: number; z: number } | null>(null);
   let organizando = $state(false);
+  let caminando = $state(false);
+  let primera = $state(false);
+  let cerca = $state<string | null>(null);
   let sobreCuadro = $state<Bloque[] | null>(null);
   const estanteSel = $derived(tienda.datos.estantes.find((e) => e.id === seleccionado) ?? null);
   const puedeSeparar = $derived.by(() => {
@@ -58,6 +61,7 @@
   onMount(() => {
     try {
       escena = new EscenaTienda(canvas, contenedor, 'editor');
+      escena.onCerca = (id) => (cerca = id);
       // solo en desarrollo: permite a las pruebas automáticas apuntar a celdas concretas
       if (import.meta.env.DEV) Object.assign(window, { __escenaTienda: escena, __tienda: tienda });
     } catch {
@@ -65,6 +69,7 @@
     }
     return () => {
       app.enfoque = false;
+      escena?.detenerCaminar();
       escena?.destruir();
       escena = null;
     };
@@ -204,6 +209,29 @@
     avisar(n ? `Colocados ${n} bloques` : 'Ese espacio ya estaba lleno');
   }
 
+  // ───────── caminar ─────────
+
+  function caminar() {
+    if (!escena || caminando) return;
+    inventario = false;
+    organizando = false;
+    seleccionado = null;
+    escena.fijarCursor(null);
+    info = null;
+    escena.iniciarCaminar(app.usuario);
+    caminando = true;
+    primera = false;
+  }
+
+  function dejarDeCaminar() {
+    if (!caminando) return;
+    escena?.detenerCaminar();
+    caminando = false;
+    cerca = null;
+  }
+
+  const estanteCerca = $derived(tienda.datos.estantes.find((e) => e.id === cerca) ?? null);
+
   // ───────── puntero ─────────
 
   let inicio: { x: number; y: number; boton: number } | null = null;
@@ -219,6 +247,10 @@
 
   function mover(e: PointerEvent) {
     if (!escena) return;
+    if (caminando) {
+      if (e.buttons) escena.girarCamara(e.movementX, e.movementY); // arrastrar con el mouse gira la cámara
+      return;
+    }
     const ap = escena.apuntar(e.clientX, e.clientY);
     if (relleno && esquina && (modo === 'construir' || modo === 'borrar')) {
       const b = modo === 'borrar' && ap.bloque ? ([ap.bloque.x, ap.bloque.y, ap.bloque.z] as Celda) : ap.celda;
@@ -234,10 +266,12 @@
   }
 
   function presionar(e: PointerEvent) {
+    if (caminando) return;
     if (e.button === 0 || e.button === 2) inicio = { x: e.clientX, y: e.clientY, boton: e.button };
   }
 
   function soltar(e: PointerEvent) {
+    if (caminando) return;
     if (!escena || !inicio || e.button !== inicio.boton) return;
     const quieto = Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y) < 6;
     inicio = null;
@@ -301,18 +335,31 @@
   // Espacio + clic derecho = desplazar la maqueta (como en Blender)
   let espacio = $state(false);
   function soltarTecla(e: KeyboardEvent) {
+    escena?.teclas.delete(e.code);
     if (e.code === 'Space') {
       espacio = false;
       escena?.paneo(false);
     }
   }
   const sinEspacio = () => {
+    escena?.teclas.clear();
     espacio = false;
     escena?.paneo(false);
   };
 
   function tecla(e: KeyboardEvent) {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (caminando) {
+      if (e.code === 'Escape' || e.code === 'KeyG') dejarDeCaminar();
+      else if (e.code === 'KeyC') {
+        escena?.alternarPrimeraPersona();
+        primera = escena?.enPrimeraPersona ?? false;
+      } else if (e.key !== 'F5' && e.key !== 'F12' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault(); // sin scroll con Espacio ni con las flechas
+        escena?.teclas.add(e.code);
+      }
+      return;
+    }
     if (e.code === 'Space') {
       e.preventDefault(); // sin scroll ni clic en botones enfocados
       if (!espacio) {
@@ -355,6 +402,7 @@
       modo = 'construir';
     } else if (k === 'x') modo = modo === 'borrar' ? 'construir' : 'borrar';
     else if (k === 'v') modo = modo === 'seleccionar' ? 'construir' : 'seleccionar';
+    else if (k === 'g') caminar();
     else if (k === 'o') organizando = !organizando && !!seleccionado;
     else if (k === 'f') relleno = !relleno;
     else if (k === 'r') giroExtra = (giroExtra + 1) % 4;
@@ -417,6 +465,9 @@
       {/if}
       <button class="btn btn-blanco" onclick={() => escena?.vistaGeneral()}>Vista general</button>
       <button class="btn btn-blanco" onclick={() => escena?.vistaPlanta()}>Planta</button>
+      <button class="btn" class:btn-primario={caminando} class:btn-blanco={!caminando} onclick={() => (caminando ? dejarDeCaminar() : caminar())} title="Caminar por la tienda (G)">
+        🚶 {caminando ? 'Dejar de caminar' : 'Caminar'}
+      </button>
       <button class="btn btn-blanco icono" onclick={() => tienda.deshacer()} disabled={!tienda.puedeDeshacer} title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
       <button class="btn btn-blanco icono" onclick={() => tienda.rehacer()} disabled={!tienda.puedeRehacer} title="Rehacer (Ctrl+Y)" aria-label="Rehacer">↷</button>
       <label class="nivel">
@@ -455,8 +506,20 @@
     {/if}
 
     <div class="abajo">
-      <Hotbar bind:ranuras bind:elegida bind:modo bind:relleno {destello} onInventario={() => (inventario = true)} />
-      <p class="ayuda">{ayudaModo}{esquina ? ' · Esc cancela' : ''}</p>
+      {#if caminando}
+        {#if estanteCerca}
+          <div class="aviso-cerca" transition:fade={{ duration: 120 }} style:--f={estanteCerca.fuerte} style:--c={estanteCerca.color}>
+            📍 <strong>{estanteCerca.titulo}</strong>{#if estanteCerca.tema} · {estanteCerca.tema}{/if}
+          </div>
+        {/if}
+        <p class="ayuda">
+          🚶 <b>W A S D</b> o flechas caminar · <b>Espacio</b> saltar · <b>Shift</b> despacio · <b>Arrastrar</b> mirar · <b>Rueda</b> zoom ·
+          <b>C</b> {primera ? 'tercera' : 'primera'} persona · <b>Esc</b> salir
+        </p>
+      {:else}
+        <Hotbar bind:ranuras bind:elegida bind:modo bind:relleno {destello} onInventario={() => (inventario = true)} />
+        <p class="ayuda">{ayudaModo}{esquina ? ' · Esc cancela' : ''}</p>
+      {/if}
     </div>
 
     {#if inventario}
@@ -601,6 +664,15 @@
     flex-direction: column;
     align-items: center;
     gap: 6px;
+    pointer-events: none;
+  }
+  .aviso-cerca {
+    padding: 8px 18px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 3px solid var(--f);
+    box-shadow: var(--sombra);
+    font-size: 15px;
     pointer-events: none;
   }
   .ayuda {

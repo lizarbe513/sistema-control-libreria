@@ -174,6 +174,7 @@ Un plano 2D no alcanza, así que **la tienda se modela con bloques, como en Mine
 
 **Modelo**
 - Cuadrícula de celdas de 0,5 m. Las medidas son configurables: ancho, largo interior, vereda y alto.
+- **Escala de referencia**: una persona mide aproximadamente **1 tramo de ancho × 3 repisas de alto**. Una repisa es 1 bloque (50 cm), un tramo son 2 bloques (1 m) y la bibliotecaria mide 3 bloques (≈ 1,5 m). Los estantes de pared de la tienda tienen 5 repisas (≈ 2,5 m), así que las escaleras sirven para alcanzar las altas.
 - **Catálogo por categorías**:
   - **Construcción**: plataforma, pared, escalera, baranda y alfombra.
   - **Muebles para libros**: estantería, caja, mesita y puerta con ligas.
@@ -207,7 +208,7 @@ Un plano 2D no alcanza, así que **la tienda se modela con bloques, como en Mine
 - **Herramientas** al costado del hotbar:
   - 🧽 **Borrador** (`X`) e interruptor; combinado con el relleno vacía zonas.
   - 👆 **Seleccionar** (`V`): abre una tarjeta del estante con letra (si ya existe, se intercambian), nombre, tema y color, más *Unir con…*, *Separar desde aquí* y *Borrar*.
-  - ✂️ **Dividir** (`D`): sobre el frente de un estante resalta la junta más cercana. Una junta vertical es un tramo y una horizontal es una tabla de repisa; el clic la agrega o la quita.
+  - 🗂️ **Organizar** (`O`, o el botón de la tarjeta del estante): un dibujo **de frente** del estante, con cada compartimento numerado (T2·R3). Un clic en la línea entre dos columnas separa o une tramos, y entre dos filas, repisas. Hay atajos (tramos de 1–4 bloques, repisas de 1–3, todo junto) y se puede numerar desde la izquierda o la derecha y desde arriba o abajo. Al pasar el mouse por un cuadro se resalta ese compartimento en la tienda 3D, y mientras está abierto aparecen sus números flotando sobre el estante.
   - ▦ **Relleno** (`F`): clic en una punta y clic en la otra. La segunda punta se toma **apuntando a una pared o a la cara de un bloque**, así que el relleno también sube o baja. Un relleno de muebles crea un **estante conectado**.
 - **Selección como Minecraft**: un contorno enmarca el bloque bajo el cursor (o el cuadro del piso o de la pared). Clic pone en la cara apuntada y clic derecho quita.
 - **Estantes con bordes**: el marco se dibuja solo donde termina el estante, según sus vecinos, con la franja del color fuerte del estante, y cada estante lleva su **cartel** con la letra. Dentro se ven los divisores de tramo y las tablas de repisa.
@@ -218,6 +219,9 @@ Un plano 2D no alcanza, así que **la tienda se modela con bloques, como en Mine
     - **Nueva tienda vacía**, para borrar todo y construir desde la base;
     - **plantillas con nombre**: guardar la actual, cargar, ★ por defecto (la que se carga al empezar y con «Restaurar») y borrar;
     - «SIGLO XXI (croquis)» viene incluida.
+- **Moverse por la maqueta**: clic derecho gira, **Espacio + clic derecho desplaza** (como en Blender), clic central también desplaza, rueda hace zoom, **Shift + rueda** sube o baja la vista y las flechas recorren el piso.
+- **Borrar sin rastro**: si un estante se queda sin bloques desaparece del todo (lista, cartel, color y divisiones); los libros que apuntaban ahí quedan como «ubicación por revisar».
+- **Caminar** (`G`): la bibliotecaria aparece en la vereda y recorre la maqueta. Mide 3 bloques, camina con **WASD** o flechas, salta con **Espacio** (≈ 1,25 bloques), va despacio con **Shift**, mira arrastrando el mouse y hace zoom con la rueda. **C** alterna tercera y primera persona. No atraviesa estantes, mostradores ni paredes; las **escaleras (de madera y de pared) se suben solas** y las plataformas se pueden pisar. Al acercarse a un estante aparece «📍 Estante A · Obras literarias». `Esc` vuelve al editor.
 - **Modo enfoque** (`Tab`): oculta el menú, la radio, la libreta y el panel, y la tienda ocupa toda la pantalla con un chip «Rosa diseñando ✨». El panel se abre como cajón (`P`) y el fondo animado se pausa.
 - Deshacer y rehacer (`Ctrl+Z` / `Ctrl+Y`), guardado automático, altura visible y vista de planta.
 - **Rendimiento**: un `InstancedMesh` por tipo y por pieza de marco, texturas procedurales y **dibujado bajo demanda**.
