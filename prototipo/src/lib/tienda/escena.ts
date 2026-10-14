@@ -1,19 +1,26 @@
 // Escena 3D de la tienda, compartida por el editor y el visor de ubicación.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { TIPOS_CON_TINTE, crearRecursos, pintarMadera, type Recursos } from './bloques';
-import { FRENTE, type Bloque, type Tienda } from './modelo';
+import { spriteBrillo } from '../fondo/sprites';
+import { BRILLOS, TIPOS_CON_TINTE, crearRecursos, familiaDe, pintarCartel, pintarMadera, type Pieza, type Recursos } from './bloques';
+import { FRENTE, clave, columnas, iniciosDeTramo, letraDe, tablasDe, tipoDeEstante, type Bloque, type Tienda } from './modelo';
 
 export type ModoEscena = 'editor' | 'visor';
+export type Celda = [number, number, number];
+export type Caja = { min: Celda; max: Celda };
 
 export interface Apuntado {
-  bloque: Bloque | null; // bloque bajo el cursor (para quitar / rotar / info)
-  celda: [number, number, number] | null; // celda vacía donde caería un bloque nuevo
+  bloque: Bloque | null; // bloque bajo el cursor (para quitar / rotar / seleccionar)
+  celda: Celda | null; // celda vacía donde caería un bloque nuevo (vecina por la cara apuntada)
+  normal: Celda | null; // normal de la cara apuntada (mundo, redondeada)
+  marco: Caja | null; // contorno a dibujar (bloque entero, o cuadro del piso / pared)
+  local: Celda | null; // punto tocado en coordenadas locales del bloque (-0.5..0.5; +z = frente)
 }
 
 const ROTACION_Y = [0, -Math.PI / 2, Math.PI, Math.PI / 2];
 const BLANCO = new THREE.Color('#ffffff');
 const APAGADO = new THREE.Color('#F6E9EE');
+const VACIO: Apuntado = { bloque: null, celda: null, normal: null, marco: null, local: null };
 
 export class EscenaTienda {
   readonly camara: THREE.PerspectiveCamera;
@@ -23,18 +30,22 @@ export class EscenaTienda {
   private recursos: Recursos;
   private grupo = new THREE.Group();
   private mallas: THREE.InstancedMesh[] = [];
-  private pisos: THREE.Mesh[] = [];
-  private fijos = new THREE.Group(); // piso, paredes, cuadrícula
+  private extras = new THREE.Group(); // carteles y halos (se rehacen en cada carga)
+  private superficies: THREE.Mesh[] = []; // piso, vereda y paredes (apuntables)
+  private fijos = new THREE.Group();
   private texturasFijas: THREE.Texture[] = [];
+  private texturaHalo: THREE.Texture;
   private raycaster = new THREE.Raycaster();
   private tienda: Tienda | null = null;
   private nivel = Infinity;
 
-  private fantasma: THREE.Mesh;
+  private cursor: THREE.LineSegments;
+  private cursorRelleno: THREE.Mesh;
+  private seleccion: THREE.LineSegments;
+  private junta: THREE.Mesh;
   private resalte: THREE.Group;
   private pin: THREE.Group;
-  private objetivo: { malla: THREE.InstancedMesh; idx: number; base: THREE.Matrix4 } | null = null;
-  private resaltado: { bloque: Bloque; estante?: string } | null = null;
+  private resaltado: { bloques: Bloque[]; estante?: string } | null = null;
   private huellas: THREE.InstancedMesh | null = null;
   private puntosRuta: THREE.Vector3[] = [];
   private vuelo: { pos: THREE.Vector3; mira: THREE.Vector3 } | null = null;
@@ -50,6 +61,7 @@ export class EscenaTienda {
   private auxQ = new THREE.Quaternion();
   private auxV = new THREE.Vector3();
   private auxE = new THREE.Vector3();
+  private uno = new THREE.Vector3(1, 1, 1);
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -61,6 +73,7 @@ export class EscenaTienda {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, rendimiento ? 1 : 1.5));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.recursos = crearRecursos();
+    this.texturaHalo = new THREE.CanvasTexture(spriteBrillo());
 
     this.camara = new THREE.PerspectiveCamera(modo === 'editor' ? 45 : 40, 1, 0.1, 400);
     this.controles = new OrbitControls(this.camara, canvas);
@@ -71,7 +84,7 @@ export class EscenaTienda {
     this.controles.maxDistance = 90;
     if (modo === 'editor') {
       this.controles.mouseButtons = {
-        LEFT: null as unknown as THREE.MOUSE, // el clic izquierdo coloca bloques
+        LEFT: null as unknown as THREE.MOUSE, // el clic izquierdo construye
         MIDDLE: THREE.MOUSE.PAN,
         RIGHT: THREE.MOUSE.ROTATE,
       };
@@ -89,28 +102,35 @@ export class EscenaTienda {
     const relleno = new THREE.DirectionalLight(0xffd3e0, 0.5);
     relleno.position.set(20, 8, -10);
     this.escena.add(relleno);
-    this.escena.add(this.fijos, this.grupo);
+    this.escena.add(this.fijos, this.grupo, this.extras);
 
-    // fantasma del editor
-    this.fantasma = new THREE.Mesh(
-      new THREE.BoxGeometry(1.02, 1.02, 1.02),
-      new THREE.MeshBasicMaterial({ color: '#F27A9B', transparent: true, opacity: 0.35, depthWrite: false }),
+    // contorno del cursor (como en Minecraft) + caja tenue del relleno
+    const aristas = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+    this.cursor = new THREE.LineSegments(aristas, new THREE.LineBasicMaterial({ color: '#3D2A33', transparent: true, opacity: 0.8, depthTest: false }));
+    this.cursor.renderOrder = 10;
+    this.cursor.visible = false;
+    this.cursorRelleno = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshBasicMaterial({ color: '#F27A9B', transparent: true, opacity: 0.12, depthWrite: false }),
     );
-    this.fantasma.add(
-      new THREE.LineSegments(new THREE.EdgesGeometry(this.fantasma.geometry), new THREE.LineBasicMaterial({ color: '#ffffff' })),
-    );
-    this.fantasma.visible = false;
-    this.escena.add(this.fantasma);
+    this.cursorRelleno.visible = false;
+    this.seleccion = new THREE.LineSegments(aristas.clone(), new THREE.LineBasicMaterial({ color: '#F27A9B', depthTest: false, transparent: true }));
+    this.seleccion.renderOrder = 9;
+    this.seleccion.visible = false;
+    this.junta = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: '#F27A9B', depthTest: false, transparent: true, opacity: 0.9 }));
+    this.junta.renderOrder = 11;
+    this.junta.visible = false;
+    this.escena.add(this.cursor, this.cursorRelleno, this.seleccion, this.junta);
 
-    // resalte del bloque buscado: caja brillante + bordes
+    // resalte del compartimento buscado: caja brillante + bordes
     this.resalte = new THREE.Group();
-    const geoR = new THREE.BoxGeometry(1.1, 1.1, 1.1);
+    const geoR = new THREE.BoxGeometry(1, 1, 1);
     this.resalte.add(new THREE.Mesh(geoR, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, depthWrite: false })));
     this.resalte.add(new THREE.LineSegments(new THREE.EdgesGeometry(geoR), new THREE.LineBasicMaterial({ color: '#ffffff' })));
     this.resalte.visible = false;
     this.escena.add(this.resalte);
 
-    // pin flotante sobre el bloque buscado
+    // pin flotante frente al compartimento
     this.pin = new THREE.Group();
     const matPin = new THREE.MeshLambertMaterial({ color: '#F27A9B', emissive: '#F27A9B', emissiveIntensity: 0.35 });
     const cabeza = new THREE.Mesh(new THREE.SphereGeometry(0.32, 20, 14), matPin);
@@ -163,7 +183,8 @@ export class EscenaTienda {
   /** Reconstruye la escena con los bloques (y opcionalmente oculta los que están sobre `nivel`). */
   cargar(t: Tienda, nivel = Infinity) {
     this.sucio = true;
-    const cambiaTamano = !this.tienda || this.tienda.ancho !== t.ancho || this.tienda.fondo !== t.fondo || this.tienda.fachada !== t.fachada;
+    const cambiaTamano =
+      !this.tienda || this.tienda.ancho !== t.ancho || this.tienda.fondo !== t.fondo || this.tienda.fachada !== t.fachada || this.tienda.alto !== t.alto;
     this.tienda = t;
     this.nivel = nivel;
     if (cambiaTamano) {
@@ -176,55 +197,148 @@ export class EscenaTienda {
       m.dispose();
     }
     this.mallas = [];
-    this.objetivo = null;
+    this.limpiarExtras();
 
+    const visibles = t.bloques.filter((b) => b.y <= nivel);
     const grupos = new Map<string, Bloque[]>();
-    for (const b of t.bloques) {
-      if (b.y > nivel) continue;
-      const k = this.recursos.claveDe(b);
+    const agregar = (k: string, b: Bloque) => {
       if (!grupos.has(k)) grupos.set(k, []);
       grupos.get(k)!.push(b);
-    }
+    };
+    for (const b of visibles) agregar(this.recursos.claveDe(b), b);
+    for (const [k, b] of this.piezasConectadas(t, visibles)) agregar(k, b);
+
     for (const [k, lista] of grupos) {
-      const def = this.recursos.defs.get(k);
+      const def = this.recursos.defs.get(k) ?? this.recursos.piezas.get(k);
       if (!def) continue;
       const malla = new THREE.InstancedMesh(def.geo, def.mat, lista.length);
       malla.userData.bloques = lista;
-      lista.forEach((b, i) => {
-        this.matrizDe(b, 1, this.aux);
-        malla.setMatrixAt(i, this.aux);
-      });
+      malla.userData.marco = k.includes(':marco');
+      lista.forEach((b, i) => malla.setMatrixAt(i, this.matrizDe(b, this.aux)));
       malla.setColorAt(0, BLANCO); // crea instanceColor
       this.mallas.push(malla);
       this.grupo.add(malla);
     }
     this.colorear();
-    if (this.resaltado) this.resaltar(this.resaltado.bloque, this.resaltado.estante, false);
+    this.ponerCarteles(t, visibles);
+    this.ponerHalos(visibles);
+    if (this.resaltado) this.resaltar(this.resaltado.bloques, this.resaltado.estante, false);
   }
 
-  private matrizDe(b: Bloque, escala: number, m: THREE.Matrix4) {
+  /**
+   * Piezas de marco según los vecinos («connected textures»): el marco va solo donde termina el estante;
+   * los divisores marcan el inicio de cada tramo y las tablas las fronteras entre repisas.
+   */
+  private piezasConectadas(t: Tienda, visibles: Bloque[]): [string, Bloque][] {
+    const idx = new Map(visibles.map((b) => [clave(b.x, b.y, b.z), b]));
+    const mismo = (b: Bloque, x: number, y: number, z: number) => {
+      const o = idx.get(clave(x, y, z));
+      return !!o && o.estante === b.estante && o.rot === b.rot && o.tipo === b.tipo;
+    };
+    const divisiones = new Map<string, { inicios: Set<string>; tabla: (x: number, y: number, z: number) => boolean }>();
+    for (const e of t.estantes) {
+      const tipo = tipoDeEstante(t, e.id);
+      if (!tipo || !familiaDe(tipo)) continue;
+      divisiones.set(e.id, { inicios: iniciosDeTramo(e, columnas(t, e.id), tipo), tabla: tablasDe(e, t, tipo) });
+    }
+    const salida: [string, Bloque][] = [];
+    for (const b of visibles) {
+      const fam = familiaDe(b.tipo);
+      if (!fam || !b.estante) continue;
+      const [fx, fz] = FRENTE[b.rot] ?? [0, 1];
+      const [rx, rz] = [fz, -fx];
+      const div = divisiones.get(b.estante);
+      const pon = (p: Pieza) => salida.push([`${fam}:${p}`, b]);
+      const izq = mismo(b, b.x - rx, b.y, b.z - rz);
+      if (!izq) pon('marcoIzq');
+      else if (div?.inicios.has(`${b.x},${b.z}`)) pon('divisor');
+      if (!mismo(b, b.x + rx, b.y, b.z + rz)) pon('marcoDer');
+      const arriba = mismo(b, b.x, b.y + 1, b.z);
+      if (!arriba) pon('marcoArr');
+      else if (div?.tabla(b.x, b.y, b.z)) pon('tabla');
+      if (!mismo(b, b.x, b.y - 1, b.z)) pon('marcoAbj');
+    }
+    return salida;
+  }
+
+  private matrizDe(b: Bloque, m: THREE.Matrix4) {
     this.auxQ.setFromAxisAngle(this.auxE.set(0, 1, 0), ROTACION_Y[b.rot] ?? 0);
-    return m.compose(this.auxV.set(b.x + 0.5, b.y + 0.5, b.z + 0.5), this.auxQ, new THREE.Vector3(escala, escala, escala));
+    return m.compose(this.auxV.set(b.x + 0.5, b.y + 0.5, b.z + 0.5), this.auxQ, this.uno);
   }
 
   private colorear() {
     const t = this.tienda;
     if (!t) return;
-    const colores = new Map(t.estantes.map((e) => [e.id, new THREE.Color(e.color)]));
+    const pastel = new Map(t.estantes.map((e) => [e.id, new THREE.Color(e.color)]));
+    const fuerte = new Map(t.estantes.map((e) => [e.id, new THREE.Color(e.fuerte)]));
     const foco = this.resaltado?.estante;
     const c = new THREE.Color();
     for (const malla of this.mallas) {
       const lista: Bloque[] = malla.userData.bloques;
+      const esMarco = malla.userData.marco;
       lista.forEach((b, i) => {
         c.copy(BLANCO);
-        if (b.estante && TIPOS_CON_TINTE.includes(b.tipo)) {
-          const tinte = colores.get(b.estante);
-          if (tinte) c.lerp(tinte, b.tipo === 'estanteria' ? 0.75 : 0.45);
+        if (b.estante && esMarco) {
+          // el marco exterior lleva el color fuerte del estante: así se distinguen los vecinos
+          const f = fuerte.get(b.estante);
+          if (f) c.lerp(f, 0.62);
+        } else if (b.estante && TIPOS_CON_TINTE.includes(b.tipo)) {
+          const p = pastel.get(b.estante);
+          if (p) c.lerp(p, b.tipo === 'estanteria' ? 0.35 : 0.45);
         }
         if (foco && b.estante !== foco) c.multiplyScalar(0.8).lerp(APAGADO, 0.5);
         malla.setColorAt(i, c);
       });
       if (malla.instanceColor) malla.instanceColor.needsUpdate = true;
+    }
+  }
+
+  private limpiarExtras() {
+    for (const o of [...this.extras.children]) {
+      this.extras.remove(o);
+      if (o instanceof THREE.Mesh) {
+        o.geometry.dispose();
+        const m = o.material as THREE.MeshBasicMaterial;
+        m.map?.dispose();
+        m.dispose();
+      } else if (o instanceof THREE.Sprite) o.material.dispose();
+    }
+  }
+
+  /** Cartel con el nombre del estante, sobre su columna central y su fila más alta. */
+  private ponerCarteles(t: Tienda, visibles: Bloque[]) {
+    for (const e of t.estantes) {
+      const bs = visibles.filter((b) => b.estante === e.id && familiaDe(b.tipo));
+      if (!bs.length) continue;
+      const cols = columnas({ ...t, bloques: bs }, e.id);
+      const col = cols[Math.floor((cols.length - 1) / 2)];
+      const arriba = col.bloques[0];
+      const [fx, fz] = FRENTE[arriba.rot] ?? [0, 1];
+      const par = cols.length % 2 === 0 && cols.length > 1;
+      const sig = par ? cols[cols.length / 2] : col;
+      const tx = new THREE.CanvasTexture(pintarCartel(e.titulo.startsWith('Estante ') ? letraDe(e) : e.titulo, e.fuerte));
+      tx.colorSpace = THREE.SRGBColorSpace;
+      const ancho = Math.min(1.6, 0.7 + e.titulo.length * 0.03);
+      const placa = new THREE.Mesh(new THREE.PlaneGeometry(ancho, ancho * 0.44), new THREE.MeshBasicMaterial({ map: tx, transparent: true }));
+      placa.position.set((col.x + sig.x) / 2 + 0.5 + fx * 0.5, arriba.y + 1.18, (col.z + sig.z) / 2 + 0.5 + fz * 0.5);
+      placa.rotation.y = ROTACION_Y[arriba.rot] ?? 0;
+      this.extras.add(placa);
+    }
+  }
+
+  private ponerHalos(visibles: Bloque[]) {
+    for (const b of visibles) {
+      const puntos = BRILLOS[b.tipo];
+      if (!puntos) continue;
+      for (const [lx, ly, lz, tam] of puntos) {
+        const s = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: this.texturaHalo, color: '#FFE3A8', transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending }),
+        );
+        const p = new THREE.Vector3(lx, ly, lz).applyAxisAngle(new THREE.Vector3(0, 1, 0), ROTACION_Y[b.rot] ?? 0);
+        s.position.set(b.x + 0.5 + p.x, b.y + 0.5 + p.y, b.z + 0.5 + p.z);
+        s.scale.setScalar(tam);
+        this.extras.add(s);
+      }
     }
   }
 
@@ -240,7 +354,7 @@ export class EscenaTienda {
     }
     for (const tx of this.texturasFijas) tx.dispose();
     this.texturasFijas = [];
-    this.pisos = [];
+    this.superficies = [];
 
     // piso de madera (interior)
     const txPiso = new THREE.CanvasTexture(pintarMadera('#F3DCC6', 21, 4));
@@ -251,35 +365,34 @@ export class EscenaTienda {
     const piso = new THREE.Mesh(new THREE.PlaneGeometry(t.ancho, t.fachada), new THREE.MeshLambertMaterial({ map: txPiso }));
     piso.rotation.x = -Math.PI / 2;
     piso.position.set(t.ancho / 2, 0, t.fachada / 2);
+    piso.userData.normal = [0, 1, 0];
     // vereda
     const fondoVereda = t.fondo - t.fachada;
     const txVereda = this.texturaVereda();
     txVereda.repeat.set(t.ancho / 2, fondoVereda / 2);
     this.texturasFijas.push(txVereda);
-    const vereda = new THREE.Mesh(new THREE.PlaneGeometry(t.ancho + 4, fondoVereda), new THREE.MeshLambertMaterial({ map: txVereda }));
+    const vereda = new THREE.Mesh(new THREE.PlaneGeometry(t.ancho, fondoVereda), new THREE.MeshLambertMaterial({ map: txVereda }));
     vereda.rotation.x = -Math.PI / 2;
-    vereda.position.set(t.ancho / 2, -0.04, t.fachada + fondoVereda / 2);
-    this.pisos.push(piso, vereda);
+    vereda.position.set(t.ancho / 2, 0, t.fachada + fondoVereda / 2);
+    vereda.userData.normal = [0, 1, 0];
+    this.superficies.push(piso, vereda);
     this.fijos.add(piso, vereda);
 
-    // paredes (solo se ven desde adentro, así no tapan la vista)
-    const matPared = new THREE.MeshLambertMaterial({ color: '#FBE6EC' });
-    const alto = Math.min(t.alto, 8);
-    const pared = (w: number, x: number, z: number, rotY: number) => {
-      const p = new THREE.Mesh(new THREE.PlaneGeometry(w, alto), matPared.clone());
+    // paredes: solo se ven desde adentro (no tapan la vista) y se pueden apuntar para colgar adornos
+    const alto = t.alto;
+    const pared = (w: number, x: number, z: number, rotY: number, normal: Celda) => {
+      const p = new THREE.Mesh(new THREE.PlaneGeometry(w, alto), new THREE.MeshLambertMaterial({ color: '#FBE6EC' }));
       p.position.set(x, alto / 2, z);
       p.rotation.y = rotY;
+      p.userData.normal = normal;
+      this.superficies.push(p);
       this.fijos.add(p);
     };
-    pared(t.ancho, t.ancho / 2, 0, 0);
-    pared(t.fachada, 0, t.fachada / 2, Math.PI / 2);
-    pared(t.fachada, t.ancho, t.fachada / 2, -Math.PI / 2);
-    matPared.dispose();
+    pared(t.ancho, t.ancho / 2, 0, 0, [0, 0, 1]);
+    pared(t.fachada, 0, t.fachada / 2, Math.PI / 2, [1, 0, 0]);
+    pared(t.fachada, t.ancho, t.fachada / 2, -Math.PI / 2, [-1, 0, 0]);
     // zócalo de la fachada (línea de la entrada)
-    const linea = new THREE.Mesh(
-      new THREE.BoxGeometry(t.ancho, 0.06, 0.12),
-      new THREE.MeshLambertMaterial({ color: '#F7B3C5' }),
-    );
+    const linea = new THREE.Mesh(new THREE.BoxGeometry(t.ancho, 0.06, 0.12), new THREE.MeshLambertMaterial({ color: '#F7B3C5' }));
     linea.position.set(t.ancho / 2, 0.03, t.fachada);
     this.fijos.add(linea);
 
@@ -314,7 +427,7 @@ export class EscenaTienda {
     const t = this.tienda;
     if (!t) return;
     const mira = new THREE.Vector3(t.ancho / 2, 0, t.fondo / 2 - 1);
-    const pos = new THREE.Vector3(t.ancho / 2 + 2, t.ancho * 0.85, t.fondo + t.ancho * 0.5);
+    const pos = new THREE.Vector3(t.ancho / 2 + 2, Math.max(t.ancho, t.fondo) * 0.95, t.fondo + Math.max(t.ancho, t.fondo) * 0.62);
     this.irA(pos, mira, inmediato);
   }
 
@@ -324,14 +437,13 @@ export class EscenaTienda {
     this.irA(new THREE.Vector3(t.ancho / 2, Math.max(t.ancho, t.fondo) * 1.45, t.fondo / 2 + 0.6), new THREE.Vector3(t.ancho / 2, 0, t.fondo / 2), false);
   }
 
-  /** Lleva la cámara frente al bloque, a una distancia cómoda. */
-  volarA(b: Bloque) {
-    const [fx, fz] = FRENTE[b.rot] ?? [0, 1];
-    const mira = new THREE.Vector3(b.x + 0.5, b.y + 0.5, b.z + 0.5);
+  /** Lleva la cámara frente a un punto que mira hacia `rot`, a una distancia cómoda. */
+  volarA(centro: THREE.Vector3, rot: number) {
+    const [fx, fz] = FRENTE[rot] ?? [0, 1];
     const lado = new THREE.Vector3(fz, 0, -fx).multiplyScalar(2.2);
-    const pos = mira.clone().add(new THREE.Vector3(fx * 14, 8.5, fz * 14)).add(lado);
+    const pos = centro.clone().add(new THREE.Vector3(fx * 14, 8.5, fz * 14)).add(lado);
     pos.y = Math.max(pos.y, 3);
-    this.irA(pos, mira, false);
+    this.irA(pos, centro.clone(), false);
   }
 
   private irA(pos: THREE.Vector3, mira: THREE.Vector3, inmediato: boolean) {
@@ -345,37 +457,30 @@ export class EscenaTienda {
 
   // ───────────── resalte y ruta ─────────────
 
-  resaltar(b: Bloque | null, estante?: string, volar = true) {
+  /** Resalta un compartimento (uno o varios bloques) y atenúa los demás estantes. */
+  resaltar(bloques: Bloque[] | null, estante?: string, volar = true) {
     this.sucio = true;
-    if (this.objetivo) {
-      this.objetivo.malla.setMatrixAt(this.objetivo.idx, this.objetivo.base);
-      this.objetivo.malla.instanceMatrix.needsUpdate = true;
-      this.objetivo = null;
-    }
-    this.resaltado = b ? { bloque: b, estante } : null;
+    this.resaltado = bloques?.length ? { bloques, estante } : null;
     this.colorear();
-    this.resalte.visible = this.pin.visible = !!b;
-    if (!b) return;
+    this.resalte.visible = this.pin.visible = !!this.resaltado;
+    if (!bloques?.length) return;
 
-    for (const malla of this.mallas) {
-      const idx = (malla.userData.bloques as Bloque[]).findIndex((o) => o.x === b.x && o.y === b.y && o.z === b.z);
-      if (idx >= 0) {
-        const base = new THREE.Matrix4();
-        malla.getMatrixAt(idx, base);
-        this.objetivo = { malla, idx, base };
-        break;
-      }
-    }
+    const { min, max } = limites(bloques);
+    const centro = new THREE.Vector3((min[0] + max[0] + 1) / 2, (min[1] + max[1] + 1) / 2, (min[2] + max[2] + 1) / 2);
+    const tam = new THREE.Vector3(max[0] - min[0] + 1.1, max[1] - min[1] + 1.1, max[2] - min[2] + 1.1);
     const fuerte = this.tienda?.estantes.find((e) => e.id === estante)?.fuerte ?? '#F27A9B';
     ((this.resalte.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(fuerte);
-    this.resalte.position.set(b.x + 0.5, b.y + 0.5, b.z + 0.5);
-    const [fx, fz] = FRENTE[b.rot] ?? [0, 1];
-    this.pin.position.set(b.x + 0.5 + fx * 0.9, b.y + 1.15, b.z + 0.5 + fz * 0.9);
-    this.pin.userData.base = b.y + 1.15;
+    this.resalte.position.copy(centro);
+    this.resalte.userData.tam = tam;
+    this.resalte.scale.copy(tam);
+    const rot = bloques[0].rot;
+    const [fx, fz] = FRENTE[rot] ?? [0, 1];
+    this.pin.position.set(centro.x + fx * (tam.x / 2 + 0.4) * Math.abs(fx), max[1] + 1.15, centro.z + fz * (tam.z / 2 + 0.4) * Math.abs(fz));
+    this.pin.userData.base = max[1] + 1.15;
     const matPin = (this.pin.children[0] as THREE.Mesh).material as THREE.MeshLambertMaterial;
     matPin.color.set(fuerte);
     matPin.emissive.set(fuerte);
-    if (volar) this.volarA(b);
+    if (volar) this.volarA(centro, rot);
   }
 
   /** Huellitas desde la vereda hasta el estante. */
@@ -407,33 +512,84 @@ export class EscenaTienda {
     const r = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camara);
-    const hit = this.raycaster.intersectObjects([...this.mallas, ...this.pisos], false)[0];
-    if (!hit) return { bloque: null, celda: null };
+    const hit = this.raycaster.intersectObjects([...this.mallas, ...this.superficies], false)[0];
+    if (!hit) return VACIO;
+
     if (hit.object instanceof THREE.InstancedMesh && hit.instanceId !== undefined) {
       const bloque = (hit.object.userData.bloques as Bloque[])[hit.instanceId];
-      // la celda nueva es la vecina por la cara apuntada (normal girada según la rotación del bloque)
-      const n = (hit.face?.normal ?? new THREE.Vector3(0, 1, 0)).clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), ROTACION_Y[bloque.rot] ?? 0);
+      const giro = ROTACION_Y[bloque.rot] ?? 0;
+      const nl = hit.face?.normal ?? new THREE.Vector3(0, 1, 0);
+      const n = nl.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), giro);
       const ax = Math.abs(n.x) >= Math.abs(n.y) && Math.abs(n.x) >= Math.abs(n.z) ? 0 : Math.abs(n.y) >= Math.abs(n.z) ? 1 : 2;
-      const celda: [number, number, number] = [bloque.x, bloque.y, bloque.z];
-      celda[ax] += Math.sign(n.getComponent(ax)) || 1;
-      return { bloque, celda };
+      const normal: Celda = [0, 0, 0];
+      normal[ax] = Math.sign(n.getComponent(ax)) || 1;
+      const celda: Celda = [bloque.x + normal[0], bloque.y + normal[1], bloque.z + normal[2]];
+      const local = hit.point.clone().sub(new THREE.Vector3(bloque.x + 0.5, bloque.y + 0.5, bloque.z + 0.5)).applyAxisAngle(new THREE.Vector3(0, 1, 0), -giro);
+      const marco: Caja = { min: [bloque.x, bloque.y, bloque.z], max: [bloque.x + 1, bloque.y + 1, bloque.z + 1] };
+      return { bloque, celda, normal, marco, local: [local.x, local.y, local.z] };
     }
-    return { bloque: null, celda: [Math.floor(hit.point.x), 0, Math.floor(hit.point.z)] };
+
+    // piso, vereda o pared
+    const normal = (hit.object.userData.normal ?? [0, 1, 0]) as Celda;
+    const p = hit.point.clone().addScaledVector(new THREE.Vector3(...normal), 0.01);
+    const celda: Celda = [Math.floor(p.x), Math.max(0, Math.floor(p.y)), Math.floor(p.z)];
+    const min: Celda = [celda[0], celda[1], celda[2]];
+    const max: Celda = [celda[0] + 1, celda[1] + 1, celda[2] + 1];
+    // el cuadro se pega a la superficie apuntada
+    const eje = normal.findIndex((v) => v !== 0);
+    const plano = normal[eje] > 0 ? min[eje] : max[eje];
+    min[eje] = plano;
+    max[eje] = plano;
+    return { bloque: null, celda, normal, marco: { min, max }, local: null };
   }
 
-  /** Fantasma de una celda, o de la caja entre dos esquinas `celda` y `hasta` (modo relleno). */
-  fijarFantasma(celda: [number, number, number] | null, color = '#F27A9B', borrar = false, hasta?: [number, number, number]) {
+  /** Punto 3D → coordenadas de pantalla (clientX, clientY). */
+  proyectar(p: Celda): [number, number] {
+    const v = new THREE.Vector3(...p).project(this.camara);
+    const r = this.renderer.domElement.getBoundingClientRect();
+    return [r.left + ((v.x + 1) / 2) * r.width, r.top + ((1 - v.y) / 2) * r.height];
+  }
+
+  /** Contorno del cursor sobre una caja (bloque, cuadro del piso o zona del relleno). */
+  fijarCursor(caja: Caja | null, modo: 'normal' | 'borrar' | 'relleno' | 'relleno-borrar' = 'normal') {
     this.sucio = true;
-    this.fantasma.visible = !!celda;
-    if (!celda) return;
-    const b = hasta ?? celda;
-    const min = [0, 1, 2].map((i) => Math.min(celda[i], b[i]));
-    const max = [0, 1, 2].map((i) => Math.max(celda[i], b[i]));
-    this.fantasma.scale.set(max[0] - min[0] + 1, max[1] - min[1] + 1, max[2] - min[2] + 1);
-    this.fantasma.position.set((min[0] + max[0] + 1) / 2, (min[1] + max[1] + 1) / 2, (min[2] + max[2] + 1) / 2);
-    const m = this.fantasma.material as THREE.MeshBasicMaterial;
-    m.color.set(borrar ? '#E0607A' : color);
-    m.opacity = borrar ? 0.5 : 0.35;
+    this.cursor.visible = !!caja;
+    this.cursorRelleno.visible = !!caja;
+    if (!caja) return;
+    const e = 0.012;
+    const tam = [0, 1, 2].map((i) => Math.max(0.02, caja.max[i] - caja.min[i] + e * 2));
+    const centro = [0, 1, 2].map((i) => (caja.min[i] + caja.max[i]) / 2);
+    for (const o of [this.cursor, this.cursorRelleno]) {
+      o.position.set(centro[0], centro[1], centro[2]);
+      o.scale.set(tam[0], tam[1], tam[2]);
+    }
+    const borrar = modo === 'borrar' || modo === 'relleno-borrar';
+    (this.cursor.material as THREE.LineBasicMaterial).color.set(borrar ? '#E0405F' : modo === 'relleno' ? '#C2185B' : '#3D2A33');
+    const fill = this.cursorRelleno.material as THREE.MeshBasicMaterial;
+    fill.color.set(borrar ? '#E0607A' : modo === 'normal' ? '#FFFFFF' : '#F27A9B');
+    fill.opacity = modo === 'normal' ? 0.22 : modo === 'borrar' ? 0.25 : 0.14;
+  }
+
+  /** Marco del estante elegido con la herramienta Seleccionar. */
+  fijarSeleccion(bloques: Bloque[] | null, color = '#F27A9B') {
+    this.sucio = true;
+    this.seleccion.visible = !!bloques?.length;
+    if (!bloques?.length) return;
+    const { min, max } = limites(bloques);
+    this.seleccion.position.set((min[0] + max[0] + 1) / 2, (min[1] + max[1] + 1) / 2, (min[2] + max[2] + 1) / 2);
+    this.seleccion.scale.set(max[0] - min[0] + 1.08, max[1] - min[1] + 1.08, max[2] - min[2] + 1.08);
+    (this.seleccion.material as THREE.LineBasicMaterial).color.set(color);
+  }
+
+  /** Línea gruesa sobre una junta (herramienta Dividir), entre dos puntos alineados a un eje. */
+  fijarJunta(a: Celda | null, b?: Celda, color = '#F27A9B') {
+    this.sucio = true;
+    this.junta.visible = !!a && !!b;
+    if (!a || !b) return;
+    const g = 0.07;
+    this.junta.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+    this.junta.scale.set(Math.max(g, Math.abs(b[0] - a[0])), Math.max(g, Math.abs(b[1] - a[1])), Math.max(g, Math.abs(b[2] - a[2])));
+    (this.junta.material as THREE.MeshBasicMaterial).color.set(color);
   }
 
   // ───────────── animación ─────────────
@@ -449,16 +605,11 @@ export class EscenaTienda {
     }
     this.controles.update();
 
-    if (this.objetivo) {
-      const s = 1 + Math.sin(t * 5) * 0.05;
-      const b = this.resaltado!.bloque;
-      this.objetivo.malla.setMatrixAt(this.objetivo.idx, this.matrizDe(b, s, this.aux));
-      this.objetivo.malla.instanceMatrix.needsUpdate = true;
-    }
     if (this.resalte.visible) {
       const m = (this.resalte.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial;
       m.opacity = 0.18 + (Math.sin(t * 5) * 0.5 + 0.5) * 0.3;
-      this.resalte.scale.setScalar(1 + Math.sin(t * 5) * 0.04);
+      const tam = this.resalte.userData.tam as THREE.Vector3 | undefined;
+      if (tam) this.resalte.scale.copy(tam).multiplyScalar(1 + Math.sin(t * 5) * 0.03);
     }
     if (this.pin.visible) {
       this.pin.position.y = this.pin.userData.base + Math.sin(t * 3) * 0.15;
@@ -483,6 +634,7 @@ export class EscenaTienda {
     this.controles.dispose();
     for (const m of this.mallas) m.dispose();
     this.mostrarRuta([]);
+    this.limpiarExtras();
     this.escena.traverse((o) => {
       if ((o instanceof THREE.Mesh || o instanceof THREE.LineSegments) && !(o instanceof THREE.InstancedMesh)) {
         o.geometry.dispose();
@@ -491,7 +643,23 @@ export class EscenaTienda {
       }
     });
     for (const tx of this.texturasFijas) tx.dispose();
+    this.texturaHalo.dispose();
     this.recursos.liberar();
     this.renderer.dispose();
   }
 }
+
+export function limites(bloques: Bloque[]): { min: Celda; max: Celda } {
+  const min: Celda = [Infinity, Infinity, Infinity];
+  const max: Celda = [-Infinity, -Infinity, -Infinity];
+  for (const b of bloques) {
+    min[0] = Math.min(min[0], b.x);
+    min[1] = Math.min(min[1], b.y);
+    min[2] = Math.min(min[2], b.z);
+    max[0] = Math.max(max[0], b.x);
+    max[1] = Math.max(max[1], b.y);
+    max[2] = Math.max(max[2], b.z);
+  }
+  return { min, max };
+}
+

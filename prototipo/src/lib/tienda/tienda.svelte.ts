@@ -2,9 +2,30 @@
 // En el prototipo se guarda en localStorage; en la app irá a la base de datos cifrada.
 
 import { guardar, leer } from '../estado.svelte';
-import { clave, indice, nuevoEstante, plantillaSigloXXI, type Bloque, type Estante, type Tienda, type TipoBloque } from './modelo';
+import {
+  clave,
+  columnas,
+  indice,
+  letraDe,
+  materializar,
+  nuevoEstante,
+  plantillaSigloXXI,
+  siguienteLetra,
+  type Bloque,
+  type Estante,
+  type Tienda,
+  type TipoBloque,
+} from './modelo';
 
-const VERSION = 1;
+export interface Plantilla {
+  id: string;
+  nombre: string;
+  tienda: Tienda | null; // null = la incluida (SIGLO XXI), se genera al cargarla
+}
+
+const INCLUIDA: Plantilla = { id: 'siglo-xxi', nombre: 'SIGLO XXI (croquis)', tienda: null };
+
+const VERSION = 2;
 
 /** Medidas en celdas de 0,5 m: interior (ancho × largo), vereda y altura. */
 export interface Medidas {
@@ -31,15 +52,30 @@ function ajustar(b: Bloque, t: Tienda, m: Medidas): Bloque | null {
   return z < m.largo + m.vereda ? { ...b, z } : null;
 }
 
+function leerPlantillas(): Plantilla[] {
+  const g = leer<{ v: number; lista: Plantilla[] } | null>('plantillas', null);
+  return [INCLUIDA, ...(g && g.v === VERSION ? g.lista.filter((p) => p.id !== INCLUIDA.id) : [])];
+}
+
+const copia = (t: Tienda): Tienda => JSON.parse(JSON.stringify(t));
+
+function tiendaDePlantilla(p: Plantilla | undefined): Tienda {
+  return p?.tienda ? copia(p.tienda) : plantillaSigloXXI();
+}
+
 function cargar(): Tienda {
   const g = leer<{ v: number; t: Tienda } | null>('tienda', null);
-  return g && g.v === VERSION && Array.isArray(g.t?.bloques) ? g.t : plantillaSigloXXI();
+  if (g && g.v === VERSION && Array.isArray(g.t?.bloques)) return g.t;
+  const defecto = leer<string>('plantillaDefecto', INCLUIDA.id);
+  return tiendaDePlantilla(leerPlantillas().find((p) => p.id === defecto));
 }
 
 class Almacen {
   datos = $state.raw<Tienda>(cargar());
   puedeDeshacer = $state(false);
   puedeRehacer = $state(false);
+  plantillas = $state.raw<Plantilla[]>(leerPlantillas());
+  plantillaDefecto = $state(leer<string>('plantillaDefecto', INCLUIDA.id));
   private pasado: Tienda[] = [];
   private futuro: Tienda[] = [];
   private espera = 0;
@@ -83,6 +119,18 @@ class Almacen {
     if (resto.length !== this.datos.bloques.length) this.aplicar({ ...this.datos, bloques: resto });
   }
 
+  /** Coloca un relleno de muebles para libros como un estante nuevo, conectado (un solo paso de deshacer). */
+  colocarComoEstante(nuevos: Bloque[], tipo: TipoBloque): Estante | null {
+    const e = nuevoEstante(this.datos, tipo);
+    const ocupado = indice(this.datos.bloques);
+    const validos = nuevos
+      .filter((b) => this.dentro(b.x, b.y, b.z) && !ocupado.has(clave(b.x, b.y, b.z)))
+      .map((b) => ({ ...b, estante: e.id }));
+    if (!validos.length) return null;
+    this.aplicar({ ...this.datos, estantes: [...this.datos.estantes, e], bloques: [...this.datos.bloques, ...validos] });
+    return e;
+  }
+
   /** Quita todos los bloques dentro de la caja [a, b] en un solo paso de deshacer. */
   quitarCaja(a: [number, number, number], b: [number, number, number]) {
     const min = [0, 1, 2].map((i) => Math.min(a[i], b[i]));
@@ -124,6 +172,124 @@ class Almacen {
     this.marcar();
   }
 
+  /** Asigna una letra; si ya la usa otro estante, se intercambian. */
+  asignarLetra(id: string, letra: string) {
+    const nueva = letra.trim().toUpperCase().slice(0, 3);
+    if (!nueva) return;
+    const actual = this.datos.estantes.find((e) => e.id === id);
+    if (!actual) return;
+    const vieja = letraDe(actual);
+    const titulo = (e: Estante, l: string) => (e.titulo === `Estante ${letraDe(e)}` ? `Estante ${l}` : e.titulo);
+    const estantes = this.datos.estantes.map((e) => {
+      if (e.id === id) return { ...e, letra: nueva, titulo: titulo(e, nueva) };
+      if (letraDe(e) === nueva) return { ...e, letra: vieja, titulo: titulo(e, vieja) };
+      return e;
+    });
+    this.aplicar({ ...this.datos, estantes });
+  }
+
+  /** Une el estante `b` dentro de `a` (sus bloques y divisiones pasan a `a`). */
+  unir(a: string, b: string) {
+    if (a === b) return;
+    const ea = this.datos.estantes.find((e) => e.id === a);
+    const eb = this.datos.estantes.find((e) => e.id === b);
+    if (!ea || !eb) return;
+    const da = materializar(this.datos, ea);
+    const db = materializar(this.datos, eb);
+    const bloques = this.datos.bloques.map((x) => (x.estante === b ? { ...x, estante: a } : x));
+    const estantes = this.datos.estantes
+      .filter((e) => e.id !== b)
+      .map((e) => (e.id === a ? { ...e, inicioTramo: [...da.inicioTramo, ...db.inicioTramo], tablas: [...da.tablas, ...db.tablas] } : e));
+    this.aplicar({ ...this.datos, bloques, estantes });
+  }
+
+  /** Parte un estante: desde la columna (x, z) hacia la derecha pasa a un estante nuevo. */
+  separar(id: string, x: number, z: number): Estante | null {
+    const e = this.datos.estantes.find((s) => s.id === id);
+    if (!e) return null;
+    const cols = columnas(this.datos, id);
+    const i = cols.findIndex((c) => c.x === x && c.z === z);
+    if (i <= 0) return null;
+    const pasan = new Set(cols.slice(i).map((c) => `${c.x},${c.z}`));
+    const tipo = cols[0].bloques[0].tipo;
+    const nuevo = nuevoEstante(this.datos, tipo);
+    if (!nuevo.letra && tipo === 'estanteria') {
+      nuevo.letra = siguienteLetra(this.datos);
+      nuevo.titulo = `Estante ${nuevo.letra}`;
+    }
+    const d = materializar(this.datos, e);
+    const deNuevo = (k: string) => pasan.has(k.split(',').length === 3 ? `${k.split(',')[0]},${k.split(',')[2]}` : k);
+    const bloques = this.datos.bloques.map((b) => (b.estante === id && pasan.has(`${b.x},${b.z}`) ? { ...b, estante: nuevo.id } : b));
+    nuevo.inicioTramo = d.inicioTramo.filter(deNuevo);
+    nuevo.tablas = d.tablas.filter(deNuevo);
+    const estantes = [
+      ...this.datos.estantes.map((s) =>
+        s.id === id ? { ...s, inicioTramo: d.inicioTramo.filter((k) => !deNuevo(k)), tablas: d.tablas.filter((k) => !deNuevo(k)) } : s,
+      ),
+      nuevo,
+    ];
+    this.aplicar({ ...this.datos, bloques, estantes });
+    return nuevo;
+  }
+
+  /** Agrega o quita el inicio de un tramo en la columna (x, z). */
+  alternarTramo(id: string, x: number, z: number) {
+    const e = this.datos.estantes.find((s) => s.id === id);
+    if (!e) return;
+    const d = materializar(this.datos, e);
+    const k = `${x},${z}`;
+    const inicioTramo = d.inicioTramo.includes(k) ? d.inicioTramo.filter((o) => o !== k) : [...d.inicioTramo, k];
+    this.aplicar({ ...this.datos, estantes: this.datos.estantes.map((s) => (s.id === id ? { ...s, ...d, inicioTramo } : s)) });
+  }
+
+  /** Agrega o quita una tabla de repisa encima de la fila `y` en las columnas dadas (todo el tramo). */
+  alternarTabla(id: string, y: number, cols: { x: number; z: number }[]) {
+    const e = this.datos.estantes.find((s) => s.id === id);
+    if (!e || !cols.length) return;
+    const d = materializar(this.datos, e);
+    const claves = cols.map((c) => clave(c.x, y, c.z));
+    const habia = claves.some((k) => d.tablas.includes(k));
+    const tablas = habia ? d.tablas.filter((k) => !claves.includes(k)) : [...d.tablas, ...claves];
+    this.aplicar({ ...this.datos, estantes: this.datos.estantes.map((s) => (s.id === id ? { ...s, ...d, tablas } : s)) });
+    return !habia;
+  }
+
+  /** Borra todo el maquetado y deja una base vacía con las medidas dadas. */
+  vaciar(m: Medidas) {
+    this.aplicar({ ancho: m.ancho, fachada: m.largo, fondo: m.largo + m.vereda, alto: m.alto, bloques: [], estantes: [] });
+  }
+
+  // ───── plantillas con nombre ─────
+
+  private guardarPlantillas() {
+    guardar('plantillas', { v: VERSION, lista: this.plantillas.filter((p) => p.id !== INCLUIDA.id) });
+    guardar('plantillaDefecto', this.plantillaDefecto);
+  }
+
+  guardarPlantilla(nombre: string) {
+    const p: Plantilla = { id: `p${Date.now().toString(36)}`, nombre: nombre.trim() || 'Mi plantilla', tienda: copia(this.datos) };
+    this.plantillas = [...this.plantillas, p];
+    this.guardarPlantillas();
+    return p;
+  }
+
+  cargarPlantilla(id: string) {
+    const p = this.plantillas.find((x) => x.id === id);
+    if (p) this.aplicar(tiendaDePlantilla(p));
+  }
+
+  marcarDefecto(id: string) {
+    this.plantillaDefecto = id;
+    this.guardarPlantillas();
+  }
+
+  borrarPlantilla(id: string) {
+    if (id === INCLUIDA.id) return;
+    this.plantillas = this.plantillas.filter((p) => p.id !== id);
+    if (this.plantillaDefecto === id) this.plantillaDefecto = INCLUIDA.id;
+    this.guardarPlantillas();
+  }
+
   borrarEstante(id: string) {
     this.aplicar({
       ...this.datos,
@@ -148,8 +314,9 @@ class Almacen {
     this.marcar();
   }
 
+  /** Vuelve a la plantilla por defecto. */
   restaurar() {
-    this.aplicar(plantillaSigloXXI());
+    this.aplicar(tiendaDePlantilla(this.plantillas.find((p) => p.id === this.plantillaDefecto)));
   }
 }
 

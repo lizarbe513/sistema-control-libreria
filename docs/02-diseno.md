@@ -164,47 +164,63 @@ lo miras, apreciando su diseño.
 - Los pétalos se dibujan en la misma capa del fondo animado (ver E).
 
 ### C. Ubicación física: texto grande + tienda 3D en bloques
-El croquis de la tienda (`.referencia/screenshot-2026-10-13_12-10-15.png`) muestra un local de un solo piso
-con la fachada abierta a la calle, estantes de madera en U, cajas abiertas con libros, el mostrador, repisas
-exteriores en la vereda y **escaleras que suben** a la parte alta. Un plano 2D no alcanza, así que **la tienda
-se modela con bloques, como en Minecraft**.
+El croquis (`.referencia/screenshot-2026-10-13_12-10-15.png`) muestra un local de un solo piso:
+- la fachada está abierta a la calle;
+- hay estantes de madera en U, cajas abiertas con libros, mesitas y el mostrador;
+- hay **escaleras que suben** a la parte alta;
+- tiene **4 hojas de puerta** que se abren hacia la vereda y llevan **ligas transparentes** donde se exhiben los libros llamativos o más pedidos.
+
+Un plano 2D no alcanza, así que **la tienda se modela con bloques, como en Minecraft**.
 
 **Modelo**
-- Cuadrícula de celdas de 0,5 m (plantilla: 24 × 23 × 10, con la fachada en la fila 16).
-- Tipos de bloque: plataforma, escalera, **estantería**, **caja de libros**, mostrador, **repisa exterior**,
-  pared/columna y planta. Los de negrita guardan libros y pertenecen a un **estante** (nombre, tema y color).
-- **Un bloque de estantería = una repisa de un tramo.** La ubicación se calcula sola desde la geometría:
-  - **tramo**: columna del estante, de izquierda a derecha mirándolo de frente;
-  - **repisa**: posición en la columna, contada desde arriba.
-- Un libro guarda `estante + tramo + repisa`; en cajas basta el estante («Caja 2»).
+- Cuadrícula de celdas de 0,5 m. Las medidas son configurables: ancho, largo interior, vereda y alto.
+- **Catálogo por categorías**:
+  - **Construcción**: plataforma, pared, escalera, baranda y alfombra.
+  - **Muebles para libros**: estantería, caja, mesita y puerta con ligas.
+  - **Atención**: mostrador, caja registradora y banquito.
+  - **Decoración**: gatito, flores de pared, lámparas de pie y colgante, planta, globo terráqueo, reloj, guirnalda, pizarrita «Recomendado», cuadro y letrero.
+  - Los objetos de pared se cuelgan de la cara apuntada.
+- Los muebles para libros pertenecen a un **estante** (id fijo + letra visible, nombre, tema y color).
+- **Tramos y repisas de tamaño libre**: cada estante guarda dónde empieza cada tramo (`inicioTramo`) y dónde hay tablas (`tablas`). Un tramo puede medir 2 bloques y una repisa 1, o lo que se quiera.
+- **Divisiones por defecto**:
+  - estanterías: tramos de 2 bloques y repisas de 1;
+  - puertas: columnas y ligas de 1;
+  - cajas y mesitas: sin dividir.
+- Un libro guarda `estante + tramo + repisa`. Cada tipo nombra la posición a su manera:
+  - «Tramo · Repisa»;
+  - «Columna · Liga»;
+  - «Dentro de la caja»;
+  - «Sobre la mesita».
+- Si el compartimento deja de existir, la ficha avisa «ubicación por revisar».
 
 **Tarjeta de ubicación**
-- **ESTANTE A** en grande · «Tramo 2 · Repisa 3», sobre el color del estante, con el mini indicador de repisas.
-- **Tienda 3D** (solo lectura): la cámara vuela hasta el estante, el bloque exacto late y brilla, un pin flota
-  frente a él, los demás estantes se atenúan y unas **huellitas** animadas marcan el camino desde la vereda
-  (BFS sobre el piso libre). Se puede girar con el dedo o el mouse.
-- Sin WebGL o en modo rendimiento: **plano cenital SVG** generado desde los mismos bloques, con el mismo
-  resalte y camino.
+- **ESTANTE A** en grande, con «Tramo 1 · Repisa 3» y el mini indicador de repisas.
+- **Tienda 3D** en solo lectura:
+  - la cámara vuela al compartimento y este late entero;
+  - un pin flota delante;
+  - los demás estantes se atenúan;
+  - unas huellitas marcan el camino desde la vereda.
+- Sin WebGL o en modo rendimiento se muestra un **plano cenital SVG** con lo mismo.
 
 **Editor «Mi tienda»** (PC; en la app, solo la Dueña)
-- **Hotbar** con los 8 bloques + borrador (teclas 1–9).
-- **Clic** pone un bloque en la cara apuntada, **clic derecho** lo quita, **arrastrar con clic derecho** gira la
-  cámara, **rueda** hace zoom, **R** rota y **Shift + arrastrar** pone una fila.
-- Las estanterías miran hacia la cámara al colocarlas (como en Minecraft).
-- Fantasma translúcido que muestra dónde caerá el bloque, y etiqueta «Estante B · tramo 3 · repisa 2» al pasar
-  el mouse.
-- **Relleno de punta a punta** (`F`): clic en una esquina y clic en la opuesta llena toda la zona, con una
-  «altura del relleno» (p. ej. 6 para una pared de estantes). Con el borrador vacía la zona, contando la altura
-  hacia abajo. Vista previa con la caja translúcida; clic derecho o `Esc` cancela.
-- **Medidas de la tienda** en cuadros de 0,5 m: ancho, largo interior, vereda y alto. La vereda se mueve con la
-  fachada; si al achicar quedan bloques fuera, avisa antes de quitarlos (y se puede deshacer).
-- Vista general / **vista de planta**, deslizador de **altura visible** para editar la parte alta.
-- Panel de estantes: nombre, tema, color, conteo de tramos y repisas, «Nuevo» y borrar.
-- Deshacer / rehacer (`Ctrl+Z` / `Ctrl+Y`), guardado automático y «Restaurar plantilla SIGLO XXI».
-- **Plantilla inicial** traducida del croquis; es una aproximación que se ajusta en minutos.
-- **Rendimiento:** un `InstancedMesh` por tipo de bloque, texturas procedurales (sin archivos) y **dibujado bajo
-  demanda**: el editor quieto no consume GPU.
-- **Al dar de alta** un libro se elige la ubicación tocando el bloque en la tienda 3D.
+- **Inventario** (`E`): ventana por categorías con buscador. Los **íconos son el propio objeto renderizado en 3D**. Un clic lleva el objeto al **hotbar**, que empieza vacío porque cada usuaria arma su paleta (`1–9`; clic derecho vacía una ranura).
+- **Herramientas** al costado del hotbar:
+  - 🧽 **Borrador** (`X`) e interruptor; combinado con el relleno vacía zonas.
+  - 👆 **Seleccionar** (`V`): abre una tarjeta del estante con letra (si ya existe, se intercambian), nombre, tema y color, más *Unir con…*, *Separar desde aquí* y *Borrar*.
+  - ✂️ **Dividir** (`D`): sobre el frente de un estante resalta la junta más cercana. Una junta vertical es un tramo y una horizontal es una tabla de repisa; el clic la agrega o la quita.
+  - ▦ **Relleno** (`F`): clic en una punta y clic en la otra. La segunda punta se toma **apuntando a una pared o a la cara de un bloque**, así que el relleno también sube o baja. Un relleno de muebles crea un **estante conectado**.
+- **Selección como Minecraft**: un contorno enmarca el bloque bajo el cursor (o el cuadro del piso o de la pared). Clic pone en la cara apuntada y clic derecho quita.
+- **Estantes con bordes**: el marco se dibuja solo donde termina el estante, según sus vecinos, con la franja del color fuerte del estante, y cada estante lleva su **cartel** con la letra. Dentro se ven los divisores de tramo y las tablas de repisa.
+- **Panel derecho**:
+  - pestaña **Estantes**: la lista;
+  - pestaña **Tienda**:
+    - medidas;
+    - **Nueva tienda vacía**, para borrar todo y construir desde la base;
+    - **plantillas con nombre**: guardar la actual, cargar, ★ por defecto (la que se carga al empezar y con «Restaurar») y borrar;
+    - «SIGLO XXI (croquis)» viene incluida.
+- **Modo enfoque** (`Tab`): oculta el menú, la radio, la libreta y el panel, y la tienda ocupa toda la pantalla con un chip «Rosa diseñando ✨». El panel se abre como cajón (`P`) y el fondo animado se pausa.
+- Deshacer y rehacer (`Ctrl+Z` / `Ctrl+Y`), guardado automático, altura visible y vista de planta.
+- **Rendimiento**: un `InstancedMesh` por tipo y por pieza de marco, texturas procedurales y **dibujado bajo demanda**.
 
 ### D. Libreta color arena (solo PC)
 - **Pestaña:** un marcapáginas de tela rosa asoma en el borde izquierdo. También se abre con `Ctrl+L`.
@@ -311,7 +327,8 @@ biblioteca/
 | `etiquetas`, `libro_etiqueta` | etiquetas libres |
 | `tienda` | ancho, fondo, alto, fachada (una sola fila) |
 | `bloques` | x, y, z (únicos), tipo, rot, estante_id? |
-| `estantes` | id, titulo, tema, color, fuerte |
+| `estantes` | id, letra, titulo, tema, color, fuerte, inicio_tramo (json), tablas (json) |
+| `plantillas_tienda` | id, nombre, datos_json, por_defecto |
 | `movimientos_stock` | id, libro_id, delta, motivo (alta/venta/anulación/ajuste), usuario_id, fecha |
 | `tipos_cliente` | id, nombre (Público/Profesor/Mayorista), descuento_pct |
 | `clientes` | id, nombre, telefono, correo, tipo_cliente_id, notas |
@@ -319,7 +336,7 @@ biblioteca/
 | `venta_items` | id, venta_id, libro_id, cantidad, precio_unit_cent, descuento_cent |
 | `pagos` | id, venta_id, metodo, monto_cent, recibido_cent?, vuelto_cent? |
 | `encargos` | id, cliente_id, libro_id?, titulo_pedido, autor_pedido, estado, fecha, notas |
-| `usuarios` | id, nombre, rol, pin_hash (Argon2), avatar, preferencias (json: fondo, calma) |
+| `usuarios` | id, nombre, rol, pin_hash (Argon2), avatar, preferencias (json: fondo, calma, hotbar) |
 | `dispositivos` | id, nombre, token_hash, creado, ultimo_uso, revocado |
 | `notas_libreta` | id, usuario_id, orden, contenido, actualizado |
 | `config` | clave, valor (API keys cifradas, datos de la tienda, etc.) |
@@ -347,7 +364,7 @@ Incluye:
 4. Inicio con saludo según la hora.
 5. Los 3 fondos animados con sus interacciones y el selector.
 6. Vista celular (ventana angosta).
-7. **Mi tienda**: editor en bloques con la plantilla del croquis.
+7. **Mi tienda**: editor en bloques (inventario, hotbar, relleno 3D, seleccionar, dividir, plantillas, enfoque).
 8. Perfil editable (nombre) en Ajustes.
 
 Para correrlo: `cd prototipo && npm install && npm run dev` (ver `prototipo/README.md`).

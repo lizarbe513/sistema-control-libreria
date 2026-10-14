@@ -1,6 +1,6 @@
 <script lang="ts">
   // Plano cenital generado desde los bloques: respaldo sin WebGL o en modo rendimiento.
-  import { infoTipo, ruta, type Bloque, type UbicacionResuelta } from '../tienda/modelo';
+  import { infoTipo, letraDe, ruta, type Bloque, type UbicacionResuelta } from '../tienda/modelo';
   import { tienda } from '../tienda/tienda.svelte';
 
   let { ubicacion }: { ubicacion: UbicacionResuelta | null } = $props();
@@ -32,7 +32,10 @@
       s.n++;
       suma.set(b.estante, s);
     }
-    return [...suma].map(([id, s]) => ({ id, x: s.x / s.n, z: s.z / s.n }));
+    return [...suma].map(([id, s]) => {
+      const e = colores.get(id);
+      return { id, texto: e ? letraDe(e) : id, x: s.x / s.n, z: s.z / s.n };
+    });
   });
 
   const camino = $derived.by(() => {
@@ -74,7 +77,7 @@
   {/if}
 
   {#each rotulos as r (r.id)}
-    <text x={r.x} y={r.z + 0.35} class="letra" class:activa={r.id === foco}>{r.id}</text>
+    <text x={r.x} y={r.z + 0.35} class="letra" class:activa={r.id === foco}>{r.texto}</text>
   {/each}
 </svg>
 

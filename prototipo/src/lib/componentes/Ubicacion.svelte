@@ -1,13 +1,14 @@
 <script lang="ts">
   import type { Libro } from '../datos';
-  import { resolver } from '../tienda/modelo';
+  import { infoTipo, resolver, textoPosicion } from '../tienda/modelo';
   import { tienda } from '../tienda/tienda.svelte';
   import Icono from './Icono.svelte';
   import Tienda3D from './Tienda3D.svelte';
 
   let { libro }: { libro: Libro } = $props();
   const u = $derived(resolver(tienda.datos, libro.ubicacion));
-  const enCaja = $derived(u?.bloque.tipo === 'caja');
+  const terminos = $derived(u ? infoTipo(u.tipo).terminos : undefined);
+  const simple = $derived(typeof terminos !== 'object');
 </script>
 
 <section class="ubicacion" style:--c={u?.info.color ?? 'var(--surface-2)'} style:--f={u?.info.fuerte ?? 'var(--primary)'}>
@@ -17,15 +18,13 @@
       <div class="texto">
         <span class="donde">Está en</span>
         <strong class="grande">{u.info.titulo.toUpperCase()}</strong>
-        {#if enCaja}
-          <span class="repisa">Dentro de la caja</span>
-        {:else}
-          <span class="repisa">Tramo {u.tramo} · Repisa {u.repisa}</span>
-          <small class="nota">repisa contada desde arriba</small>
+        <span class="repisa">{textoPosicion(u)}</span>
+        {#if typeof terminos === 'object'}
+          <small class="nota">{terminos[1].toLowerCase()} contada desde arriba</small>
         {/if}
         {#if u.info.tema}<span class="nombre">{u.info.tema}</span>{/if}
       </div>
-      {#if !enCaja}
+      {#if !simple}
         <!-- mini estante: qué repisa (contando desde arriba) -->
         <div class="repisas" aria-label={`Repisa ${u.repisa} de ${u.repisas}, contando desde arriba`}>
           {#each Array.from({ length: u.repisas }, (_, i) => i + 1) as n}
@@ -37,7 +36,7 @@
       <div class="texto">
         <span class="donde">Ubicación</span>
         <strong class="medio">Sin asignar</strong>
-        <span class="nombre">Su estante ya no existe en «Mi tienda». Asígnale uno nuevo.</span>
+        <span class="nombre">Ubicación por revisar: ese estante o compartimento ya no existe en «Mi tienda».</span>
       </div>
     {/if}
   </div>

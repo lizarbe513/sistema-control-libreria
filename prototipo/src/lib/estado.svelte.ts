@@ -41,6 +41,8 @@ export const app = $state({
   },
   radio: { sonando: false, pista: 0, volumen: 0.6 },
   libretaAbierta: false,
+  /** Modo enfoque del editor de la tienda: solo la bibliotecaria y su biblioteca. */
+  enfoque: false,
   fichaMovil: false,
   toast: '' as string,
   hora: new Date().getHours(),

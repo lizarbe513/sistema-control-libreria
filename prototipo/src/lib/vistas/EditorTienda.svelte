@@ -1,62 +1,71 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { avisar } from '../estado.svelte';
-  import { EscenaTienda } from '../tienda/escena';
-  import { PALETA, TIPOS, columnas, infoTipo, ubicacionDe, type Bloque, type TipoBloque } from '../tienda/modelo';
-  import { LIMITES, medidasDe, tienda, type Medidas } from '../tienda/tienda.svelte';
-  import Icono from '../componentes/Icono.svelte';
-
-  type Herramienta = TipoBloque | 'borrar';
+  import { fade } from 'svelte/transition';
+  import Hotbar, { type Modo } from '../componentes/tienda/Hotbar.svelte';
+  import Inventario from '../componentes/tienda/Inventario.svelte';
+  import PanelTienda from '../componentes/tienda/PanelTienda.svelte';
+  import TarjetaEstante from '../componentes/tienda/TarjetaEstante.svelte';
+  import { app, avisar, guardar, leer } from '../estado.svelte';
+  import { familiaDe } from '../tienda/bloques';
+  import { EscenaTienda, type Apuntado, type Caja, type Celda } from '../tienda/escena';
+  import {
+    FRENTE,
+    columnas,
+    compartimentos,
+    iniciosDeTramo,
+    infoTipo,
+    tablasDe,
+    textoPosicion,
+    ubicacionDe,
+    type Bloque,
+    type TipoBloque,
+  } from '../tienda/modelo';
+  import { tienda } from '../tienda/tienda.svelte';
 
   let contenedor: HTMLDivElement = $state()!;
   let canvas: HTMLCanvasElement = $state()!;
   let escena: EscenaTienda | null = $state(null);
   let sinWebGL = $state(false);
 
-  let herramienta = $state<Herramienta>('estanteria');
+  // barra de bloques (empieza vacía; cada usuaria arma la suya)
+  let ranuras = $state<(TipoBloque | null)[]>(leer('hotbar', Array(9).fill(null)));
+  let elegida = $state(0);
+  let modo = $state<Modo>('construir');
+  let relleno = $state(false);
   let giroExtra = $state(0);
-  let estanteActivo = $state<string | null>('A');
+  let destello = $state(-1);
+  let inventario = $state(false);
+  $effect(() => guardar('hotbar', $state.snapshot(ranuras)));
+
   let nivel = $state(tienda.datos.alto - 1);
   let info = $state<{ x: number; y: number; texto: string } | null>(null);
-
-  // relleno de punta a punta: primer clic marca una esquina, el segundo llena la caja
-  type Celda = [number, number, number];
-  let relleno = $state(false);
   let esquina = $state<Celda | null>(null);
-  let alturaRelleno = $state(1);
+
+  // seleccionar / unir / separar
+  let seleccionado = $state<string | null>(null);
+  let uniendo = $state(false);
+  let separarEn = $state<{ x: number; z: number } | null>(null);
+  const estanteSel = $derived(tienda.datos.estantes.find((e) => e.id === seleccionado) ?? null);
+  const puedeSeparar = $derived.by(() => {
+    if (!seleccionado || !separarEn) return false;
+    const cols = columnas(tienda.datos, seleccionado);
+    return cols.findIndex((c) => c.x === separarEn!.x && c.z === separarEn!.z) > 0;
+  });
+
+  let panelAbierto = $state(false); // cajón del panel en modo enfoque
+  const enfoque = $derived(app.enfoque);
   const MAX_RELLENO = 6000;
-
-  // medidas (borrador editable; se sincroniza si la tienda cambia, p. ej. al deshacer)
-  let medidas = $state<Medidas>(medidasDe(tienda.datos));
-  $effect(() => {
-    medidas = medidasDe(tienda.datos);
-  });
-  $effect(() => {
-    if (nivel > tienda.datos.alto - 1) nivel = tienda.datos.alto - 1;
-  });
-
-  const t = $derived(tienda.datos);
-  const resumen = $derived(
-    t.estantes.map((e) => {
-      const cols = columnas(t, e.id);
-      const bloques = cols.reduce((n, c) => n + c.bloques.length, 0);
-      const esCaja = cols[0]?.bloques[0]?.tipo === 'caja';
-      const detalle = !cols.length
-        ? 'vacío: coloca bloques'
-        : esCaja
-          ? `${bloques} bloque${bloques === 1 ? '' : 's'}`
-          : `${cols.length} tramo${cols.length === 1 ? '' : 's'} · ${Math.max(...cols.map((c) => c.bloques.length))} repisas`;
-      return { ...e, detalle };
-    }),
-  );
 
   onMount(() => {
     try {
       escena = new EscenaTienda(canvas, contenedor, 'editor');
+      // solo en desarrollo: permite a las pruebas automáticas apuntar a celdas concretas
+      if (import.meta.env.DEV) (window as unknown as { __escenaTienda: EscenaTienda }).__escenaTienda = escena;
     } catch {
       sinWebGL = true;
     }
     return () => {
+      app.enfoque = false;
       escena?.destruir();
       escena = null;
     };
@@ -65,8 +74,22 @@
   $effect(() => {
     escena?.cargar(tienda.datos, nivel);
   });
+  $effect(() => {
+    if (nivel > tienda.datos.alto - 1) nivel = tienda.datos.alto - 1;
+  });
+  $effect(() => {
+    const id = seleccionado;
+    escena?.fijarSeleccion(id ? tienda.datos.bloques.filter((b) => b.estante === id) : null, estanteSel?.fuerte);
+  });
+  $effect(() => {
+    // al cambiar de herramienta se cancela lo que estaba a medias
+    void relleno;
+    if (modo !== 'seleccionar') uniendo = false;
+    esquina = null;
+    escena?.fijarJunta(null);
+  });
 
-  // ───────── colocar / quitar ─────────
+  // ───────── colocar ─────────
 
   /** Rotación que mira hacia la cámara (como en Minecraft) + los giros extra con R. */
   function rotHaciaCamara(x: number, z: number) {
@@ -77,319 +100,410 @@
     return (base + giroExtra) % 4;
   }
 
-  function nuevoBloque([x, y, z]: [number, number, number], tipo: TipoBloque): Bloque {
+  /** Los objetos de pared miran hacia afuera de la cara donde se cuelgan. */
+  function rotDeNormal(n: Celda | null) {
+    if (!n) return null;
+    if (n[2] === 1) return 0;
+    if (n[0] === -1) return 1;
+    if (n[2] === -1) return 2;
+    if (n[0] === 1) return 3;
+    return null;
+  }
+
+  function nuevoBloque([x, y, z]: Celda, tipo: TipoBloque, normal: Celda | null = null): Bloque {
     const i = infoTipo(tipo);
-    const b: Bloque = { x, y, z, tipo, rot: i.rota ? rotHaciaCamara(x, z) : 0 };
-    if (i.guardaLibros) b.estante = estanteParaColocar(tipo);
-    return b;
+    const rot = i.montaje === 'pared' ? (rotDeNormal(normal) ?? rotHaciaCamara(x, z)) : i.rota ? rotHaciaCamara(x, z) : 0;
+    return { x, y, z, tipo, rot };
   }
 
-  function estanteParaColocar(tipo: TipoBloque) {
-    if (estanteActivo && t.estantes.some((e) => e.id === estanteActivo)) return estanteActivo;
-    const e = tienda.crearEstante(tipo);
-    estanteActivo = e.id;
-    avisar(`Nuevo: ${e.titulo}`);
-    return e.id;
-  }
-
-  function linea(a: [number, number, number], b: [number, number, number]): [number, number, number][] {
-    const dx = b[0] - a[0];
-    const dz = b[2] - a[2];
-    const celdas: [number, number, number][] = [];
-    if (Math.abs(dx) >= Math.abs(dz)) {
-      for (let i = 0; i <= Math.abs(dx); i++) celdas.push([a[0] + i * Math.sign(dx), a[1], a[2]]);
-    } else {
-      for (let i = 0; i <= Math.abs(dz); i++) celdas.push([a[0], a[1], a[2] + i * Math.sign(dz)]);
+  /** Estante al que se suma un bloque suelto: el del vecino del mismo tipo, o el elegido si coincide. */
+  function estanteVecino(b: Bloque): string | null {
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      const o = tienda.datos.bloques.find((v) => v.x === b.x + dx && v.y === b.y + dy && v.z === b.z + dz);
+      if (o?.estante && o.tipo === b.tipo && o.rot === b.rot) return o.estante;
     }
-    return celdas;
+    if (seleccionado) {
+      const t = tienda.datos.bloques.find((v) => v.estante === seleccionado);
+      if (!t || t.tipo === b.tipo) return seleccionado;
+    }
+    return null;
   }
 
-  /** Celda objetivo según la herramienta: el bloque apuntado (borrar) o la celda vacía (poner). */
-  function objetivo(a: { bloque: Bloque | null; celda: Celda | null }): Celda | null {
-    if (herramienta === 'borrar') return a.bloque ? [a.bloque.x, a.bloque.y, a.bloque.z] : null;
-    return a.celda;
+  function poner(celda: Celda, tipo: TipoBloque, normal: Celda | null) {
+    const b = nuevoBloque(celda, tipo, normal);
+    if (!infoTipo(tipo).guardaLibros) return tienda.colocar([b]);
+    const e = estanteVecino(b);
+    if (e) return tienda.colocar([{ ...b, estante: e }]);
+    const nuevo = tienda.colocarComoEstante([b], tipo);
+    if (nuevo) {
+      seleccionado = nuevo.id;
+      avisar(`Nuevo: ${nuevo.titulo}`);
+    }
   }
 
-  /** Esquina opuesta de la caja: misma huella que el cursor; la altura sube al poner y baja al borrar. */
-  const opuesta = (inicio: Celda, c: Celda): Celda => [
-    c[0],
-    herramienta === 'borrar' ? Math.max(0, inicio[1] - alturaRelleno + 1) : inicio[1] + alturaRelleno - 1,
-    c[2],
-  ];
+  function cajaDe(a: Celda, b: Celda): Caja {
+    return {
+      min: [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.min(a[2], b[2])],
+      max: [Math.max(a[0], b[0]) + 1, Math.max(a[1], b[1]) + 1, Math.max(a[2], b[2]) + 1],
+    };
+  }
 
   function rellenar(a: Celda, b: Celda) {
-    const tipo = herramienta;
-    if (tipo === 'borrar') {
-      const n = tienda.quitarCaja(a, b);
+    const { min, max } = cajaDe(a, b);
+    if (modo === 'borrar') {
+      const n = tienda.quitarCaja(min, [max[0] - 1, max[1] - 1, max[2] - 1]);
       avisar(n ? `Quitados ${n} bloques` : 'No había bloques ahí');
       return;
     }
-    const [x0, x1] = [Math.min(a[0], b[0]), Math.max(a[0], b[0])];
-    const [y0, y1] = [Math.min(a[1], b[1]), Math.max(a[1], b[1])];
-    const [z0, z1] = [Math.min(a[2], b[2]), Math.max(a[2], b[2])];
-    const total = (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1);
+    const tipo = ranuras[elegida];
+    if (!tipo) return;
+    const total = (max[0] - min[0]) * (max[1] - min[1]) * (max[2] - min[2]);
     if (total > MAX_RELLENO) {
       avisar(`Demasiado grande (${total} bloques). Máximo ${MAX_RELLENO}.`);
       return;
     }
     const nuevos: Bloque[] = [];
-    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) nuevos.push(nuevoBloque([x, y, z], tipo));
+    for (let x = min[0]; x < max[0]; x++) for (let y = min[1]; y < max[1]; y++) for (let z = min[2]; z < max[2]; z++) nuevos.push(nuevoBloque([x, y, z], tipo));
+    if (infoTipo(tipo).guardaLibros) {
+      // un relleno de muebles crea un estante conectado
+      const e = tienda.colocarComoEstante(nuevos, tipo);
+      if (e) {
+        seleccionado = e.id;
+        avisar(`${e.titulo}: ${nuevos.length} bloques conectados`);
+      } else avisar('Ese espacio ya estaba lleno');
+      return;
+    }
     const n = tienda.colocar(nuevos);
     avisar(n ? `Colocados ${n} bloques` : 'Ese espacio ya estaba lleno');
   }
 
-  function alternarRelleno() {
-    relleno = !relleno;
-    esquina = null;
+  // ───────── dividir ─────────
+
+  interface Junta {
+    a: Celda;
+    b: Celda;
+    existe: boolean;
+    texto: string;
+    aplicar: () => void;
   }
 
-  function aplicarMedidas() {
-    const m: Medidas = { ...medidas };
-    for (const k of Object.keys(LIMITES) as (keyof Medidas)[]) {
-      const [min, max] = LIMITES[k];
-      m[k] = Math.max(min, Math.min(max, Math.round(Number(m[k]) || min)));
+  /** Junta más cercana al punto tocado en el frente de un estante: vertical (tramo) u horizontal (repisa). */
+  function calcularJunta(ap: Apuntado): Junta | null {
+    const b = ap.bloque;
+    if (!b?.estante || !ap.local || !familiaDe(b.tipo)) return null;
+    const [fx, fz] = FRENTE[b.rot] ?? [0, 1];
+    if (ap.normal?.[0] !== fx || ap.normal?.[2] !== fz) return null;
+    const t = tienda.datos;
+    const e = t.estantes.find((s) => s.id === b.estante);
+    if (!e) return null;
+    const [rx, rz] = [fz, -fx];
+    const term = infoTipo(b.tipo).terminos as [string, string];
+    const cols = columnas(t, e.id);
+    const u = ap.local[0];
+    const v = ap.local[1];
+    const fuera = 0.53;
+
+    if (0.5 - Math.abs(u) < 0.5 - Math.abs(v)) {
+      const s = u >= 0 ? 1 : -1;
+      const vecina = cols.find((c) => c.x === b.x + s * rx && c.z === b.z + s * rz);
+      const propia = cols.find((c) => c.x === b.x && c.z === b.z);
+      if (!vecina || !propia) return null;
+      const derecha = s > 0 ? vecina : propia;
+      const existe = iniciosDeTramo(e, cols, b.tipo).has(`${derecha.x},${derecha.z}`);
+      const ys = [...propia.bloques, ...vecina.bloques].map((o) => o.y);
+      const px = b.x + 0.5 + s * rx * 0.5 + fx * fuera;
+      const pz = b.z + 0.5 + s * rz * 0.5 + fz * fuera;
+      return {
+        a: [px, Math.min(...ys), pz],
+        b: [px, Math.max(...ys) + 1, pz],
+        existe,
+        texto: existe ? `Clic: unir estos dos ${term[0].toLowerCase()}s` : `Clic: separar en dos ${term[0].toLowerCase()}s`,
+        aplicar: () => tienda.alternarTramo(e.id, derecha.x, derecha.z),
+      };
     }
-    const fuera = tienda.fueraCon(m);
-    if (fuera && !confirm(`Con estas medidas quedan fuera ${fuera} bloques y se quitarán. ¿Continuar?`)) return;
-    tienda.redimensionar(m);
-    nivel = m.alto - 1;
-    avisar(`Tienda de ${m.ancho / 2} × ${m.largo / 2} m`);
+    const y = v >= 0 ? b.y : b.y - 1; // tabla encima de la fila y
+    const tr = compartimentos(t, e.id).find((x) => x.columnas.some((c) => c.x === b.x && c.z === b.z));
+    if (!tr) return null;
+    const tiene = (yy: number) => tr.columnas.some((c) => c.bloques.some((o) => o.y === yy));
+    if (!tiene(y) || !tiene(y + 1)) return null;
+    const hay = tablasDe(e, t, b.tipo);
+    const existe = tr.columnas.some((c) => hay(c.x, y, c.z));
+    const c0 = tr.columnas[0];
+    const c1 = tr.columnas[tr.columnas.length - 1];
+    return {
+      a: [c0.x + 0.5 - rx * 0.5 + fx * fuera, y + 1, c0.z + 0.5 - rz * 0.5 + fz * fuera],
+      b: [c1.x + 0.5 + rx * 0.5 + fx * fuera, y + 1, c1.z + 0.5 + rz * 0.5 + fz * fuera],
+      existe,
+      texto: existe ? `Clic: quitar esta tabla (${term[1].toLowerCase()} más alta)` : `Clic: poner una tabla (dos ${term[1].toLowerCase()}s)`,
+      aplicar: () => tienda.alternarTabla(e.id, y, tr.columnas),
+    };
   }
 
   // ───────── puntero ─────────
 
-  let inicio: { x: number; y: number; boton: number; celda: [number, number, number] | null; fila: boolean } | null = null;
+  let inicio: { x: number; y: number; boton: number } | null = null;
+
+  function textoInfo(ap: Apuntado): string | null {
+    if (modo === 'dividir') return calcularJunta(ap)?.texto ?? (ap.bloque?.estante ? 'Apunta al frente, cerca de una junta' : null);
+    if (modo === 'seleccionar' && uniendo) return ap.bloque?.estante ? 'Clic: unir con este estante' : 'Elige otro estante';
+    if (modo === 'construir' && !ranuras[elegida]) return 'Ranura vacía: abre el inventario (E)';
+    if (!ap.bloque) return esquina ? 'Clic: la otra punta' : null;
+    const u = ubicacionDe(tienda.datos, ap.bloque);
+    if (u) return `${u.info.titulo}${typeof infoTipo(u.tipo).terminos === 'object' ? ' · ' + textoPosicion(u) : ''}`;
+    return infoTipo(ap.bloque.tipo).nombre;
+  }
 
   function mover(e: PointerEvent) {
     if (!escena) return;
-    const a = escena.apuntar(e.clientX, e.clientY);
-    const h = herramienta;
-    const borrar = h === 'borrar';
-    const color = h === 'borrar' ? '' : infoTipo(h).color;
-    const c = objetivo(a);
-    if (relleno && esquina) escena.fijarFantasma(esquina, color, borrar, c ? opuesta(esquina, c) : esquina);
-    else if (relleno && c) escena.fijarFantasma(c, color, borrar, opuesta(c, c));
-    else escena.fijarFantasma(c, color, borrar);
-
-    const u = a.bloque ? ubicacionDe(t, a.bloque) : null;
+    const ap = escena.apuntar(e.clientX, e.clientY);
+    if (modo === 'dividir') {
+      const j = calcularJunta(ap);
+      escena.fijarJunta(j?.a ?? null, j?.b, j?.existe ? '#E0405F' : '#F27A9B');
+      escena.fijarCursor(j ? null : ap.marco);
+    } else if (relleno && esquina && (modo === 'construir' || modo === 'borrar')) {
+      const b = modo === 'borrar' && ap.bloque ? ([ap.bloque.x, ap.bloque.y, ap.bloque.z] as Celda) : ap.celda;
+      escena.fijarCursor(b ? cajaDe(esquina, b) : cajaDe(esquina, esquina), modo === 'borrar' ? 'relleno-borrar' : 'relleno');
+    } else if (modo === 'borrar') {
+      escena.fijarCursor(ap.bloque ? ap.marco : null, 'borrar');
+    } else {
+      escena.fijarCursor(ap.marco);
+    }
+    const texto = textoInfo(ap);
     const r = contenedor.getBoundingClientRect();
-    info = a.bloque
-      ? {
-          x: e.clientX - r.left,
-          y: e.clientY - r.top,
-          texto: u
-            ? u.bloque.tipo === 'caja'
-              ? u.info.titulo
-              : `${u.info.titulo} · tramo ${u.tramo} · repisa ${u.repisa}`
-            : infoTipo(a.bloque.tipo).nombre,
-        }
-      : null;
+    info = texto ? { x: e.clientX - r.left, y: e.clientY - r.top, texto } : null;
   }
 
   function presionar(e: PointerEvent) {
-    if (!escena || (e.button !== 0 && e.button !== 2)) return;
-    const a = escena.apuntar(e.clientX, e.clientY);
-    inicio = { x: e.clientX, y: e.clientY, boton: e.button, celda: a.celda, fila: e.button === 0 && e.shiftKey };
+    if (e.button === 0 || e.button === 2) inicio = { x: e.clientX, y: e.clientY, boton: e.button };
   }
 
   function soltar(e: PointerEvent) {
     if (!escena || !inicio || e.button !== inicio.boton) return;
     const quieto = Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y) < 6;
-    const a = escena.apuntar(e.clientX, e.clientY);
-    if (inicio.boton === 2) {
-      if (quieto && relleno && esquina) esquina = null; // clic derecho cancela la esquina
-      else if (quieto && a.bloque) tienda.quitar(a.bloque.x, a.bloque.y, a.bloque.z);
+    inicio = null;
+    if (!quieto) return;
+    const ap = escena.apuntar(e.clientX, e.clientY);
+
+    if (e.button === 2) {
+      // clic derecho: cancela lo que esté a medias, o quita el bloque
+      if (esquina || uniendo) {
+        esquina = null;
+        uniendo = false;
+      } else if (ap.bloque) tienda.quitar(ap.bloque.x, ap.bloque.y, ap.bloque.z);
+      mover(e);
+      return;
+    }
+
+    if (modo === 'dividir') {
+      calcularJunta(ap)?.aplicar();
+    } else if (modo === 'seleccionar') {
+      const id = ap.bloque?.estante ?? null;
+      if (uniendo && seleccionado && id && id !== seleccionado) {
+        tienda.unir(seleccionado, id);
+        avisar('Estantes unidos 🔗');
+        uniendo = false;
+      } else {
+        seleccionado = id;
+        separarEn = ap.bloque ? { x: ap.bloque.x, z: ap.bloque.z } : null;
+        uniendo = false;
+      }
     } else if (relleno) {
-      const c = objetivo(a);
-      if (quieto && c) {
-        if (!esquina) esquina = c;
-        else {
-          rellenar(esquina, opuesta(esquina, c));
+      const punto = modo === 'borrar' && ap.bloque ? ([ap.bloque.x, ap.bloque.y, ap.bloque.z] as Celda) : ap.celda;
+      if (punto) {
+        if (!esquina) {
+          if (modo === 'construir' && !ranuras[elegida]) avisar('Elige un bloque: abre el inventario (E)');
+          else esquina = punto;
+        } else {
+          rellenar(esquina, punto);
           esquina = null;
         }
       }
-    } else if (herramienta === 'borrar') {
-      if (a.bloque) tienda.quitar(a.bloque.x, a.bloque.y, a.bloque.z);
-    } else if (inicio.fila && inicio.celda && a.celda) {
-      const tipo = herramienta;
-      tienda.colocar(linea(inicio.celda, [a.celda[0], inicio.celda[1], a.celda[2]]).map((c) => nuevoBloque(c, tipo)));
-    } else if (quieto && a.celda) {
-      tienda.colocar([nuevoBloque(a.celda, herramienta)]);
+    } else if (modo === 'borrar') {
+      if (ap.bloque) tienda.quitar(ap.bloque.x, ap.bloque.y, ap.bloque.z);
+    } else {
+      const tipo = ranuras[elegida];
+      if (!tipo) avisar('Elige un bloque: abre el inventario (E)');
+      else if (ap.celda) poner(ap.celda, tipo, ap.normal);
     }
-    inicio = null;
     mover(e);
+  }
+
+  // ───────── teclado e inventario ─────────
+
+  function elegirDelInventario(tipo: TipoBloque) {
+    let i = ranuras[elegida] === null ? elegida : ranuras.indexOf(null);
+    if (i < 0) i = elegida;
+    ranuras[i] = tipo;
+    elegida = i;
+    modo = 'construir';
+    destello = i;
+    setTimeout(() => (destello = -1), 450);
   }
 
   function tecla(e: KeyboardEvent) {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    const k = e.key.toLowerCase();
     const ctrl = e.ctrlKey || e.metaKey;
-    if (ctrl && e.key.toLowerCase() === 'z') {
+    if (ctrl && k === 'z') {
       e.preventDefault();
       if (e.shiftKey) tienda.rehacer();
       else tienda.deshacer();
-    } else if (ctrl && e.key.toLowerCase() === 'y') {
+    } else if (ctrl && k === 'y') {
       e.preventDefault();
       tienda.rehacer();
-    } else if (!ctrl && e.key >= '1' && e.key <= '9') {
-      const n = Number(e.key);
-      herramienta = n === 9 ? 'borrar' : TIPOS[n - 1].id;
-    } else if (!ctrl && e.key.toLowerCase() === 'f') {
-      alternarRelleno();
-    } else if (e.key === 'Escape' && esquina) {
-      esquina = null;
-      escena?.fijarFantasma(null);
-    } else if (!ctrl && e.key.toLowerCase() === 'r') {
-      giroExtra = (giroExtra + 1) % 4;
+    } else if (ctrl) {
+      return;
+    } else if (k === 'e') {
+      inventario = !inventario;
+    } else if (e.key === 'Escape') {
+      if (inventario) inventario = false;
+      else if (esquina || uniendo) {
+        esquina = null;
+        uniendo = false;
+      } else if (seleccionado) seleccionado = null;
+      else if (app.enfoque) app.enfoque = false;
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      app.enfoque = !app.enfoque;
+    } else if (k >= '1' && k <= '9') {
+      elegida = Number(k) - 1;
+      modo = 'construir';
+    } else if (k === 'x') modo = modo === 'borrar' ? 'construir' : 'borrar';
+    else if (k === 'v') modo = modo === 'seleccionar' ? 'construir' : 'seleccionar';
+    else if (k === 'd') modo = modo === 'dividir' ? 'construir' : 'dividir';
+    else if (k === 'f') relleno = !relleno;
+    else if (k === 'r') giroExtra = (giroExtra + 1) % 4;
+    else if (k === 'p' && app.enfoque) panelAbierto = !panelAbierto;
+  }
+
+  function separar() {
+    if (!seleccionado || !separarEn) return;
+    const n = tienda.separar(seleccionado, separarEn.x, separarEn.z);
+    if (n) {
+      seleccionado = n.id;
+      avisar(`Separado: ${n.titulo}`);
     }
   }
 
-  function restaurar() {
-    if (confirm('¿Volver a la plantilla de SIGLO XXI? Se perderán los cambios de la tienda.')) {
-      tienda.restaurar();
-      estanteActivo = 'A';
-      avisar('Plantilla restaurada');
+  function borrarSeleccionado() {
+    if (estanteSel && confirm(`¿Borrar «${estanteSel.titulo}» y todos sus bloques?`)) {
+      tienda.borrarEstante(estanteSel.id);
+      seleccionado = null;
     }
   }
 
-  function nuevo() {
-    const tipo: TipoBloque = herramienta === 'caja' || herramienta === 'exterior' ? herramienta : 'estanteria';
-    const e = tienda.crearEstante(tipo);
-    estanteActivo = e.id;
-    if (herramienta !== tipo) herramienta = tipo;
-  }
-
-  function cambiarColor(id: string, actual: string) {
-    const i = PALETA.findIndex(([c]) => c === actual);
-    const [color, fuerte] = PALETA[(i + 1) % PALETA.length];
-    tienda.editarEstante(id, { color, fuerte });
-  }
-
-  function borrar(id: string, titulo: string) {
-    if (confirm(`¿Borrar «${titulo}» y todos sus bloques?`)) {
-      tienda.borrarEstante(id);
-      if (estanteActivo === id) estanteActivo = null;
-    }
-  }
+  const ayudaModo = $derived(
+    modo === 'borrar'
+      ? '🧽 Borrador: clic quita' + (relleno ? ' · ▦ dos puntas vacían la zona' : '')
+      : modo === 'seleccionar'
+        ? '👆 Seleccionar: clic en un estante para editarlo'
+        : modo === 'dividir'
+          ? '✂️ Dividir: clic en una junta del frente agrega o quita tramos y repisas'
+          : relleno
+            ? '▦ Relleno: clic en una punta y luego en la otra (apunta a una pared o bloque para subir)'
+            : 'Clic pone · clic derecho quita · arrastrar con clic derecho gira · rueda zoom · R rota',
+  );
 </script>
 
 <svelte:window onkeydown={tecla} />
 
-<div class="editor">
-  <div class="escenario vidrio" bind:this={contenedor}>
+<div class="editor" class:enfoque>
+  <div class="escenario" class:vidrio={!enfoque} bind:this={contenedor}>
     {#if sinWebGL}
       <p class="aviso">Este equipo no tiene WebGL; el editor 3D no está disponible.</p>
     {/if}
     <canvas
       bind:this={canvas}
+      class:herramienta={modo !== 'construir'}
       onpointermove={mover}
       onpointerdown={presionar}
       onpointerup={soltar}
       onpointerleave={() => {
-        escena?.fijarFantasma(null);
+        escena?.fijarCursor(null);
+        escena?.fijarJunta(null);
         info = null;
       }}
       oncontextmenu={(e) => e.preventDefault()}
     ></canvas>
 
     <div class="barra-sup">
-      <h1>Mi tienda</h1>
+      {#if enfoque}
+        <span class="quien"><span class="avatar">{app.usuario[0] ?? '🌸'}</span> {app.usuario} diseñando ✨</span>
+      {:else}
+        <h1>Mi tienda</h1>
+      {/if}
       <button class="btn btn-blanco" onclick={() => escena?.vistaGeneral()}>Vista general</button>
-      <button class="btn btn-blanco" onclick={() => escena?.vistaPlanta()}>Vista de planta</button>
+      <button class="btn btn-blanco" onclick={() => escena?.vistaPlanta()}>Planta</button>
       <button class="btn btn-blanco icono" onclick={() => tienda.deshacer()} disabled={!tienda.puedeDeshacer} title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
       <button class="btn btn-blanco icono" onclick={() => tienda.rehacer()} disabled={!tienda.puedeRehacer} title="Rehacer (Ctrl+Y)" aria-label="Rehacer">↷</button>
-      <button class="btn relleno" class:btn-primario={relleno} class:btn-blanco={!relleno} onclick={alternarRelleno} title="Rellenar de punta a punta (F)">
-        ▦ Relleno{relleno ? (esquina ? ' · marca la otra punta' : ' · marca una punta') : ''}
-      </button>
-      {#if relleno}
-        <label class="altura">
-          <span>Altura</span>
-          <input type="number" min="1" max={t.alto} bind:value={alturaRelleno} />
-        </label>
-      {/if}
       <label class="nivel">
         <span>Altura visible</span>
-        <input type="range" min="0" max={t.alto - 1} bind:value={nivel} />
+        <input type="range" min="0" max={tienda.datos.alto - 1} bind:value={nivel} />
         <strong>{nivel + 1}</strong>
       </label>
+      {#if enfoque}
+        <button class="btn btn-blanco" onclick={() => (panelAbierto = !panelAbierto)} title="Panel (P)">☰ Panel</button>
+      {/if}
+      <button class="btn" class:btn-primario={enfoque} class:btn-blanco={!enfoque} onclick={() => (app.enfoque = !app.enfoque)} title="Modo enfoque (Tab)">
+        {enfoque ? '✕ Salir del enfoque' : '⤢ Enfoque'}
+      </button>
     </div>
 
+    {#if estanteSel}
+      <TarjetaEstante
+        estante={estanteSel}
+        {puedeSeparar}
+        {uniendo}
+        onUnir={() => {
+          modo = 'seleccionar';
+          uniendo = !uniendo;
+        }}
+        onSeparar={separar}
+        onBorrar={borrarSeleccionado}
+        onCerrar={() => (seleccionado = null)}
+      />
+    {/if}
+
     {#if info}
-      <div class="etiqueta" style:left="{info.x + 14}px" style:top="{info.y + 14}px">{info.texto}</div>
+      <div class="etiqueta" style:left="{info.x + 16}px" style:top="{info.y + 16}px">{info.texto}</div>
     {/if}
 
     <div class="abajo">
-      <div class="hotbar" role="toolbar" aria-label="Bloques">
-        {#each TIPOS as tipo, i}
-          <button class="ranura" class:activa={herramienta === tipo.id} onclick={() => (herramienta = tipo.id)} title={tipo.nombre}>
-            <span class="num">{i + 1}</span>
-            <span class="emoji">{tipo.emoji}</span>
-            <span class="nombre">{tipo.nombre}</span>
-          </button>
-        {/each}
-        <button class="ranura" class:activa={herramienta === 'borrar'} onclick={() => (herramienta = 'borrar')} title="Borrador">
-          <span class="num">9</span>
-          <span class="emoji">🧽</span>
-          <span class="nombre">Borrador</span>
-        </button>
-      </div>
-      <p class="ayuda">
-        <b>Clic</b> poner · <b>Clic derecho</b> quitar · <b>Arrastrar con clic derecho</b> girar · <b>Rueda</b> zoom ·
-        <b>R</b> rotar ({['↓', '←', '↑', '→'][giroExtra]}) · <b>Shift + arrastrar</b> una fila · <b>F</b> relleno de punta a punta
-      </p>
+      <Hotbar bind:ranuras bind:elegida bind:modo bind:relleno {destello} onInventario={() => (inventario = true)} />
+      <p class="ayuda">{ayudaModo}{esquina ? ' · Esc cancela' : ''}</p>
     </div>
+
+    {#if inventario}
+      <Inventario onElegir={elegirDelInventario} onCerrar={() => (inventario = false)} />
+    {/if}
   </div>
 
-  <aside class="panel vidrio">
-    <details class="medidas">
-      <summary><strong>Medidas de la tienda</strong> <span class="atenuado">{t.ancho / 2} × {t.fachada / 2} m</span></summary>
-      <p class="atenuado">En cuadros de 0,5 m. La vereda se mueve junto con la fachada.</p>
-      <div class="campos">
-        {#each [['ancho', 'Ancho'], ['largo', 'Largo (interior)'], ['vereda', 'Vereda'], ['alto', 'Alto']] as const as [k, nombre]}
-          <label>
-            <span>{nombre}</span>
-            <input type="number" min={LIMITES[k][0]} max={LIMITES[k][1]} bind:value={medidas[k]} />
-            <small>{(Number(medidas[k]) || 0) / 2} m</small>
-          </label>
-        {/each}
-      </div>
-      <button class="btn btn-suave" onclick={aplicarMedidas}>Aplicar medidas</button>
-    </details>
-
-    <div class="cab">
-      <h2 class="titulo-seccion">Estantes</h2>
-      <button class="btn btn-suave" onclick={nuevo}><Icono nombre="mas" tam={16} /> Nuevo</button>
-    </div>
-    <p class="atenuado">Las estanterías, cajas y repisas que coloques se suman al estante elegido.</p>
-    <ul>
-      {#each resumen as e (e.id)}
-        <li class:activo={estanteActivo === e.id}>
-          <button class="punto" style:background={e.color} style:border-color={e.fuerte} onclick={() => cambiarColor(e.id, e.color)} title="Cambiar color" aria-label="Cambiar color"></button>
-          <div class="elegir" onfocusin={() => (estanteActivo = e.id)}>
-            <input value={e.titulo} onchange={(ev) => tienda.editarEstante(e.id, { titulo: ev.currentTarget.value || e.titulo })} aria-label="Nombre" />
-            <input class="tema" value={e.tema} placeholder="¿Qué libros guarda?" onchange={(ev) => tienda.editarEstante(e.id, { tema: ev.currentTarget.value })} aria-label="Tema" />
-            <button class="usar" onclick={() => (estanteActivo = e.id)}>
-              {e.detalle}{estanteActivo === e.id ? ' · en uso' : ' · usar'}
-            </button>
-          </div>
-          <button class="quitar" onclick={() => borrar(e.id, e.titulo)} aria-label="Borrar estante" title="Borrar estante"><Icono nombre="cerrar" tam={14} /></button>
-        </li>
-      {/each}
-    </ul>
-    <button class="btn btn-blanco restaurar" onclick={restaurar}>Restaurar plantilla SIGLO XXI</button>
-  </aside>
+  {#if !enfoque || panelAbierto}
+    <aside class="panel vidrio" class:cajon={enfoque} transition:fade={{ duration: 150 }}>
+      <PanelTienda bind:seleccionado onNivel={(alto) => (nivel = alto - 1)} />
+    </aside>
+  {/if}
 </div>
 
 <style>
   .editor {
     height: calc(100vh - 36px);
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-columns: minmax(0, 1fr) 290px;
     gap: 16px;
+    position: relative;
+  }
+  .editor.enfoque {
+    height: 100vh;
+    grid-template-columns: minmax(0, 1fr);
   }
   .escenario {
     position: relative;
     overflow: hidden;
     background: radial-gradient(ellipse at 50% 20%, #fffafc, color-mix(in srgb, var(--primary-soft) 60%, var(--surface)));
+  }
+  .enfoque .escenario {
+    border-radius: 0;
   }
   :global([data-tema='noche']) .escenario {
     background: radial-gradient(ellipse at 50% 20%, #5a4b7e, #2c2648);
@@ -402,6 +516,9 @@
     display: block;
     cursor: crosshair;
     touch-action: none;
+  }
+  canvas.herramienta {
+    cursor: pointer;
   }
   .aviso {
     position: absolute;
@@ -424,14 +541,31 @@
   .barra-sup > * {
     pointer-events: auto;
   }
-  h1 {
-    font-size: 20px;
+  h1,
+  .quien {
+    font-size: 18px;
     margin: 0 4px 0 0;
     font-weight: 800;
     padding: 6px 16px;
     border-radius: 999px;
     background: var(--surface);
     box-shadow: var(--sombra-suave);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-soft), var(--lilac));
+    color: var(--primary-strong);
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+  }
+  .btn {
+    font-size: 13px;
   }
   .btn.icono {
     width: 40px;
@@ -442,69 +576,10 @@
     opacity: 0.45;
     cursor: default;
   }
-  .relleno {
-    font-size: 14px;
-  }
-  .altura {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: 999px;
-    background: var(--surface);
-    font-size: 13px;
-    font-weight: 700;
-    box-shadow: var(--sombra-suave);
-  }
-  .altura input,
-  .campos input {
-    width: 56px;
-    font: inherit;
-    font-weight: 800;
-    border: 2px solid var(--linea);
-    border-radius: 10px;
-    padding: 3px 6px;
-    background: var(--surface);
-    color: var(--text);
-  }
-  .medidas {
-    background: var(--surface);
-    border-radius: 14px;
-    padding: 10px 12px;
-  }
-  .medidas summary {
-    cursor: pointer;
-    font-size: 14px;
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .medidas[open] {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .campos {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-  .campos label {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: 12px;
-    font-weight: 700;
-  }
-  .campos small {
-    color: var(--muted);
-    font-size: 11px;
-  }
   .nivel {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-left: auto;
     padding: 6px 14px;
     border-radius: 999px;
     background: var(--surface);
@@ -514,7 +589,7 @@
   }
   .nivel input {
     accent-color: var(--primary);
-    width: 110px;
+    width: 100px;
   }
   .etiqueta {
     position: absolute;
@@ -526,6 +601,7 @@
     font-size: 12px;
     font-weight: 700;
     white-space: nowrap;
+    z-index: 6;
   }
   .abajo {
     position: absolute;
@@ -538,61 +614,11 @@
     gap: 6px;
     pointer-events: none;
   }
-  .hotbar {
-    display: flex;
-    gap: 6px;
-    padding: 6px;
-    border-radius: 20px;
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
-    box-shadow: var(--sombra);
-    pointer-events: auto;
-  }
-  .ranura {
-    position: relative;
-    width: 62px;
-    height: 62px;
-    border-radius: 14px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    border: 2px solid transparent;
-    background: var(--surface-2);
-    transition: transform 0.15s, border-color 0.2s;
-  }
-  .ranura:hover {
-    transform: translateY(-2px);
-  }
-  .ranura.activa {
-    border-color: var(--primary);
-    background: var(--primary-soft);
-    transform: translateY(-4px);
-  }
-  .num {
-    position: absolute;
-    top: 3px;
-    left: 6px;
-    font-size: 10px;
-    font-weight: 800;
-    color: var(--muted);
-  }
-  .emoji {
-    font-size: 22px;
-    line-height: 1;
-  }
-  .ranura .nombre {
-    font-size: 9px;
-    font-weight: 700;
-    line-height: 1.1;
-    text-align: center;
-    max-width: 58px;
-  }
   .ayuda {
     margin: 0;
     font-size: 12px;
     color: var(--muted);
-    background: color-mix(in srgb, var(--surface) 80%, transparent);
+    background: color-mix(in srgb, var(--surface) 85%, transparent);
     padding: 3px 12px;
     border-radius: 999px;
   }
@@ -601,93 +627,16 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 18px;
-  }
-  .cab {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .panel p {
-    margin: 0;
-    font-size: 13px;
-  }
-  ul {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    flex: 1;
+    padding: 16px;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
   }
-  li {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-    border-radius: 14px;
+  .panel.cajon {
+    position: absolute;
+    top: 70px;
+    right: 14px;
+    bottom: 110px;
+    width: 300px;
+    z-index: 7;
     background: var(--surface);
-    border: 2px solid transparent;
-  }
-  li.activo {
-    border-color: var(--primary);
-  }
-  .punto {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    border: 3px solid;
-    flex: none;
-  }
-  .elegir {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    text-align: left;
-  }
-  .elegir input {
-    font: inherit;
-    font-weight: 800;
-    font-size: 14px;
-    border: none;
-    background: transparent;
-    color: var(--text);
-    padding: 0;
-    min-width: 0;
-  }
-  .elegir input.tema {
-    font-weight: 600;
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .elegir input:focus {
-    outline: none;
-    text-decoration: underline dotted var(--primary);
-  }
-  .usar {
-    text-align: left;
-    padding: 0;
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .quitar {
-    color: var(--muted);
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    flex: none;
-  }
-  .quitar:hover {
-    background: var(--primary-soft);
-    color: var(--primary-strong);
-  }
-  .restaurar {
-    font-size: 13px;
   }
 </style>

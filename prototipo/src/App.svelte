@@ -59,7 +59,7 @@
 {:else if movil}
   <AppMovil />
 {:else}
-  <div class="shell escritorio" class:con-panel={app.vista === 'buscar'} data-vacio>
+  <div class="shell escritorio" class:con-panel={app.vista === 'buscar'} class:enfoque={app.enfoque && app.vista === 'tienda'} data-vacio>
     <Navegacion />
     <main class="centro" data-vacio>
       {#key app.vista}
@@ -84,7 +84,7 @@
       </aside>
     {/if}
   </div>
-  <Libreta />
+  {#if !(app.enfoque && app.vista === 'tienda')}<Libreta />{/if}
 {/if}
 
 {#if app.toast}
@@ -100,6 +100,20 @@
     grid-template-columns: 268px minmax(0, 1fr);
     gap: 18px;
     padding: 18px 18px 18px 30px;
+  }
+  /* modo enfoque: solo la bibliotecaria y su biblioteca */
+  .escritorio.enfoque {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0;
+    gap: 0;
+  }
+  .escritorio.enfoque > :global(.lateral) {
+    display: none;
+  }
+  .escritorio.enfoque .centro {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
   }
   .escritorio.con-panel {
     grid-template-columns: 268px minmax(0, 1fr) minmax(340px, 400px);

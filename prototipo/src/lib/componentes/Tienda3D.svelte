@@ -35,12 +35,12 @@
   $effect(() => {
     if (!escena) return;
     const u = ubicacion;
-    escena.resaltar(u?.bloque ?? null, u?.estante);
+    escena.resaltar(u?.bloques ?? null, u?.estante);
     escena.mostrarRuta(u ? ruta(tienda.datos, u.bloque) : []);
   });
 
   function recentrar() {
-    if (ubicacion) escena?.volarA(ubicacion.bloque);
+    if (ubicacion) escena?.resaltar(ubicacion.bloques, ubicacion.estante);
     else escena?.vistaGeneral();
   }
 </script>

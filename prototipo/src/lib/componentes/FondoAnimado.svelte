@@ -26,6 +26,7 @@
     void app.calma.rendimiento;
     void app.radio.sonando;
     void app.calma.petalosRadio;
+    void app.enfoque;
     m?.sincronizar();
   });
 </script>
