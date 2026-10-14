@@ -141,6 +141,20 @@ debe ser exactamente el total. Solo el efectivo da vuelto: se guarda lo recibido
 stock. Si falta stock o los pagos no cuadran, no queda nada a medias. El título y el % del tipo de cliente se copian
 en la venta, para que el historial no cambie si luego se editan.
 
+**Nombre del cliente:** campo opcional en la venta. Vacío, queda «Cliente»; si se enlaza un cliente registrado, su
+nombre se rellena solo. Se guarda en la venta (`cliente_nombre`), así que el historial no cambia si la ficha se edita.
+
+**Yape y su QR:** el botón de Yape/Plin lleva la insignia de Yape. Al elegirlo se muestra el **QR del negocio**, que la
+Dueña sube en **Ajustes → Métodos de pago** (se guarda como `qr-yape.png` en la carpeta de datos, así viaja con ella y
+con los respaldos). Sin QR, el cobro muestra un recuadro discontinuo con el muñequito confundido y el camino a Ajustes.
+
+**Venta en curso en 3D:** una bolsa de papel donde van entrando los libros (hasta 4 ejemplares); con 5 o más, la bolsa
+sale y entra una caja de cartón que se cierra. Respeta el modo calma (sin animaciones queda estática).
+
+**Al confirmar:** ventana de resumen tipo papelito con el Osito (moño, bolsa con 2 libros, caminando hacia la derecha) y
+una explosión de pétalos. No es un comprobante de pago (sin SUNAT). Las «Ventas del día» tienen aspecto de papelito de
+caja, con el Osito de una sola tinta.
+
 **Interfaz:** vista «Vender» (buscar y agregar con Enter o con ＋, tipo de cliente, cliente opcional con alta rápida,
 cobrar), «Ventas del día» con selector de fecha y anulación, «Hoy» en Inicio y el botón «Vender» de la ficha.
 Al confirmar cae una lluvia breve de corazones y pétalos (si las animaciones están activas).
@@ -161,7 +175,7 @@ El día de «hoy» es el **día local**: la interfaz convierte el día a instant
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 
 ## Cómo se probó (hitos 1 a 3)
-- **`cargo test -p libreria-core`:** 40 tests, más 2 con red. Cubren:
+- **`cargo test -p libreria-core`:** 43 tests, más 2 con red. Cubren:
   - el cifrado real y la llave equivocada;
   - PIN y bloqueo tras 5 intentos;
   - ventas: el orden de los descuentos, el redondeo solo en efectivo, el pago dividido con vuelto, que un pago
