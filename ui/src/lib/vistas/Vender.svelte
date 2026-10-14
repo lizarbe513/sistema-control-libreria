@@ -1,9 +1,13 @@
 <script lang="ts">
   // Nueva venta: buscar libros, armar el carrito, elegir tipo de cliente y cobrar. Y las ventas del día.
   import { api, type Cliente, type ResumenVentas, type Venta } from '../api';
+  import BolsaVenta from '../componentes/BolsaVenta.svelte';
   import Cobrar from '../componentes/Cobrar.svelte';
+  import Comprobante from '../componentes/Comprobante.svelte';
+  import Osito from '../componentes/Osito.svelte';
   import DescuentoCampo from '../componentes/DescuentoCampo.svelte';
   import Icono from '../componentes/Icono.svelte';
+  import IconoMetodo from '../componentes/IconoMetodo.svelte';
   import { CATEGORIAS, soles, type Libro } from '../datos';
   import { app, avisar } from '../estado.svelte';
   import { inventario, vista } from '../inventario.svelte';
@@ -17,6 +21,7 @@
   let consulta = $state('');
   let resultados = $state<Libro[]>([]);
   let cobrando = $state(false);
+  let comprobante = $state<Venta | null>(null);
   let entrada: HTMLInputElement | undefined = $state();
 
   const calc = $derived(calculoActual());
@@ -87,6 +92,7 @@
 
   function elegirCliente(c: Cliente) {
     carrito.cliente = c;
+    carrito.clienteNombre = c.nombre;
     // un cliente registrado como Profesor o Mayorista trae su tipo
     if (c.tipoClienteId && carrito.tipos.some((t) => t.id === c.tipoClienteId)) carrito.tipoId = c.tipoClienteId;
     buscandoCliente = false;
@@ -109,8 +115,7 @@
     cobrando = false;
     vaciar();
     ventasCambio.version++;
-    ventasCambio.celebracion++;
-    avisar(`Venta registrada · ${soles(v.totalCent)} 💕`);
+    comprobante = v;
     consulta = '';
     inventario.version++;
   }
@@ -149,7 +154,7 @@
     }
   }
 
-  const hora = (iso: string) => new Date(iso).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+  const hora = (iso: string) => new Date(iso).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false });
 </script>
 
 <div class="vender" class:movil data-vacio>
@@ -199,6 +204,7 @@
 
       <aside class="carrito vidrio" aria-label="Carrito de la venta">
         <h2>🛍️ Venta en curso</h2>
+        <BolsaVenta libros={carrito.lineas.map((l) => ({ color: l.libro.tapa, cantidad: l.cantidad }))} />
 
         {#if !carrito.lineas.length}
           <div class="vacio-carrito">
@@ -239,11 +245,12 @@
           </div>
 
           <div class="bloque">
-            <span class="etq">Cliente <small>(opcional)</small></span>
+            <span class="etq">Nombre del cliente <small>(opcional)</small></span>
+            <input class="nombre-cliente" bind:value={carrito.clienteNombre} maxlength="80" placeholder="Cliente" aria-label="Nombre del cliente" />
             {#if carrito.cliente}
               <div class="cliente">
                 <span>👤 {carrito.cliente.nombre}{#if carrito.cliente.telefono} · {carrito.cliente.telefono}{/if}</span>
-                <button class="enlace" onclick={() => (carrito.cliente = null)}>Quitar</button>
+                <button class="enlace" onclick={() => ((carrito.cliente = null), (carrito.clienteNombre = ''))}>Quitar</button>
               </div>
             {:else if creando}
               <div class="nuevo">
@@ -266,7 +273,7 @@
                 <button class="enlace" onclick={() => (buscandoCliente = false)}>Cancelar</button>
               </span>
             {:else}
-              <button class="enlace" onclick={() => (buscandoCliente = true)}>Sin cliente · elegir o crear</button>
+              <button class="enlace" onclick={() => (buscandoCliente = true)}>¿Es un cliente registrado? Buscar o crear</button>
             {/if}
           </div>
 
@@ -301,7 +308,7 @@
           <div class="kpis">
             <span class="kpi"><strong data-testid="dia-total">{soles(resumen.totalCent)}</strong><small>{resumen.ventas} {resumen.ventas === 1 ? 'venta' : 'ventas'} · {resumen.unidades} libros</small></span>
             {#each resumen.porMetodo as m (m.metodo)}
-              <span class="chip">{METODOS[m.metodo].emoji} {soles(m.montoCent)}</span>
+              <span class="chip"><IconoMetodo metodo={m.metodo} tam={18} /> {soles(m.montoCent)}</span>
             {/each}
             {#if resumen.anuladas}<span class="chip anul">{resumen.anuladas} anulada{resumen.anuladas === 1 ? '' : 's'}</span>{/if}
           </div>
@@ -313,12 +320,13 @@
       {:else}
         <ul class="ventas">
           {#each ventas as v (v.id)}
-            <li class="tarjeta venta" class:anulada={v.anulada}>
+            <li class="ticket venta" class:anulada={v.anulada}>
+              <span class="sello-osito" aria-hidden="true"><Osito mono camina={false} tam={56} /></span>
               <button class="cab" onclick={() => (abierta = abierta === v.id ? null : v.id)} aria-expanded={abierta === v.id}>
                 <span class="h">{hora(v.fecha)}</span>
-                <span class="quien">{v.vendedora}{#if v.cliente} · {v.cliente}{/if}</span>
+                <span class="quien">{v.cliente} · <small>{v.vendedora}</small></span>
                 <span class="res-items">{v.items.map((i) => (i.cantidad > 1 ? `${i.cantidad}× ` : '') + i.titulo).join(', ')}</span>
-                <span class="mets">{v.pagos.map((p) => METODOS[p.metodo].emoji).join(' ')}</span>
+                <span class="mets">{#each v.pagos as p}<IconoMetodo metodo={p.metodo} tam={18} />{/each}</span>
                 <strong class="monto">{soles(v.totalCent)}</strong>
                 {#if v.anulada}<span class="sello">ANULADA</span>{/if}
               </button>
@@ -338,7 +346,7 @@
                   </p>
                   <p class="nota">
                     {#each v.pagos as p}
-                      {METODOS[p.metodo].emoji} {METODOS[p.metodo].nombre} {soles(p.montoCent)}{#if p.vueltoCent} (vuelto {soles(p.vueltoCent)}){/if}{' '}
+                      <IconoMetodo metodo={p.metodo} tam={16} /> {METODOS[p.metodo].nombre} {soles(p.montoCent)}{#if p.vueltoCent} (vuelto {soles(p.vueltoCent)}){/if}{' '}
                     {/each}
                   </p>
                   {#if v.anulada}
@@ -363,6 +371,10 @@
     </div>
   {/if}
 </div>
+
+{#if comprobante}
+  <Comprobante venta={comprobante} onCerrar={() => (comprobante = null)} />
+{/if}
 
 {#if cobrando}
   <Cobrar onCerrar={() => (cobrando = false)} onListo={listo} />
@@ -859,6 +871,52 @@
   .venta.anulada {
     opacity: 0.7;
   }
+  /* papelito de caja: papel crema, borde inferior dentado, línea punteada y el Osito de una sola tinta */
+  .ticket {
+    position: relative;
+    background: #fffdf8;
+    color: #3d2f2a;
+    border-radius: 8px 8px 0 0;
+    box-shadow: 0 3px 10px rgba(120, 40, 70, 0.1);
+    --d: 9px;
+    mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / var(--d) 51% repeat-x, linear-gradient(#000 0 0) top / 100% calc(100% - var(--d) * 0.5) no-repeat;
+    padding-bottom: 8px;
+    overflow: hidden;
+  }
+  .ticket::before {
+    content: '';
+    position: absolute;
+    left: 102px;
+    top: 10px;
+    bottom: 14px;
+    border-left: 2px dashed #e1d3ca;
+  }
+  .sello-osito {
+    position: absolute;
+    right: 150px;
+    bottom: -4px;
+    color: #3d2f2a;
+    opacity: 0.14;
+    pointer-events: none;
+  }
+  .ticket .h,
+  .ticket .monto {
+    font-family: ui-monospace, 'DejaVu Sans Mono', monospace;
+  }
+  .ticket .quien small {
+    font-weight: 600;
+  }
+  .nombre-cliente {
+    height: 36px;
+    border-radius: 12px;
+    border: 1.5px solid var(--linea);
+    background: var(--surface);
+    padding: 0 10px;
+    font: inherit;
+    color: var(--text);
+    box-sizing: border-box;
+    min-width: 0;
+  }
   .venta.anulada .res-items,
   .venta.anulada .monto {
     text-decoration: line-through;
@@ -866,14 +924,15 @@
   .cab {
     width: 100%;
     display: grid;
-    grid-template-columns: 54px 150px minmax(0, 1fr) auto auto auto;
+    grid-template-columns: 76px 170px minmax(0, 1fr) auto auto auto;
     gap: 12px;
     align-items: center;
-    padding: 12px 16px;
+    padding: 12px 16px 12px 22px;
     text-align: left;
   }
   .h {
     font-weight: 800;
+    white-space: nowrap;
   }
   .quien {
     color: var(--muted);
@@ -899,14 +958,17 @@
     padding: 1px 6px;
   }
   .detalle {
-    padding: 0 16px 14px;
+    padding: 0 16px 14px 118px;
+    align-items: flex-start;
     display: flex;
     flex-direction: column;
     gap: 6px;
   }
   .detalle table {
     border-collapse: collapse;
-    width: 100%;
+    width: min(560px, 100%);
+    font-family: ui-monospace, 'DejaVu Sans Mono', monospace;
+    font-size: 13px;
   }
   .detalle td {
     padding: 3px 0;
@@ -925,6 +987,12 @@
     color: #b0243f;
   }
   @media (max-width: 760px) {
+    .ticket::before {
+      display: none;
+    }
+    .detalle {
+      padding-left: 16px;
+    }
     .cab {
       grid-template-columns: 50px minmax(0, 1fr) auto;
     }

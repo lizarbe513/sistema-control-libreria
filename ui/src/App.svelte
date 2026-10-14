@@ -14,7 +14,6 @@
   import EditorTienda from './lib/vistas/EditorTienda.svelte';
   import Libros from './lib/vistas/Libros.svelte';
   import Inicio from './lib/vistas/Inicio.svelte';
-  import Lluvia from './lib/componentes/Lluvia.svelte';
   import Pendiente from './lib/vistas/Pendiente.svelte';
   import Vender from './lib/vistas/Vender.svelte';
   import Bienvenida from './lib/acceso/Bienvenida.svelte';
@@ -107,8 +106,6 @@
   </div>
   {#if !(app.enfoque && app.vista === 'tienda')}<Libreta />{/if}
 {/if}
-
-<Lluvia />
 
 {#if app.toast}
   <div class="toast" transition:fly={{ y: 30, duration: 300 }} role="status">{app.toast}</div>

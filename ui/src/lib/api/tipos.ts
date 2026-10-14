@@ -170,6 +170,8 @@ export interface VentaEntrada {
   items: ItemEntrada[];
   tipoClienteId: number;
   clienteId?: number | null;
+  /** Lo que dio el cliente; vacío: el de la ficha registrada o «Cliente». */
+  clienteNombre?: string | null;
   descuento?: Descuento | null;
   pagos: PagoEntrada[];
 }
@@ -194,7 +196,8 @@ export interface Venta {
   usuarioId: number;
   vendedora: string;
   clienteId: number | null;
-  cliente: string | null;
+  /** Siempre tiene valor: el nombre dado, el del cliente registrado o «Cliente». */
+  cliente: string;
   tipoNombre: string;
   tipoPct: number;
   subtotalCent: number;

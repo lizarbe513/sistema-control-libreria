@@ -3,6 +3,7 @@
   import { app, avisar, guardar, type AnimLibro } from '../estado.svelte';
   import { api } from '../api';
   import { cerrarSesion, esDuena, sesion } from '../sesion.svelte';
+  import MetodosPago from '../componentes/MetodosPago.svelte';
   import TiposCliente from '../componentes/TiposCliente.svelte';
   import Usuarias from '../componentes/Usuarias.svelte';
   import { inventario } from '../inventario.svelte';
@@ -94,6 +95,11 @@
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Tipos de cliente y descuentos</h2>
       <TiposCliente />
+    </section>
+
+    <section class="vidrio bloque">
+      <h2 class="titulo-seccion">Métodos de pago</h2>
+      <MetodosPago />
     </section>
   {/if}
 

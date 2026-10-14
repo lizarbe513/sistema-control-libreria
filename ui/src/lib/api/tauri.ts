@@ -176,4 +176,13 @@ export class ApiTauri implements Api {
   crearCliente(entrada: ClienteEntrada) {
     return this.llamar<Cliente>('cliente_crear_rapido', { entrada });
   }
+  qrPago() {
+    return this.llamar<string | null>('qr_pago_obtener');
+  }
+  guardarQrPago(origen: string) {
+    return this.llamar<string | null>('qr_pago_guardar', { ruta: origen });
+  }
+  quitarQrPago() {
+    return this.llamar<void>('qr_pago_quitar');
+  }
 }

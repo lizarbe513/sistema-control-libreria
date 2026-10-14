@@ -81,4 +81,9 @@ export interface Api {
   topeDescuento(valor?: number): Promise<number>;
   buscarClientes(texto: string): Promise<Cliente[]>;
   crearCliente(e: ClienteEntrada): Promise<Cliente>;
+  /** QR de cobro del negocio (data-URL), o null si aún no se estableció. */
+  qrPago(): Promise<string | null>;
+  /** Solo la Dueña. `origen`: ruta (Tauri) o dataURL (demo), como la devuelve `elegirImagen`. */
+  guardarQrPago(origen: string): Promise<string | null>;
+  quitarQrPago(): Promise<void>;
 }

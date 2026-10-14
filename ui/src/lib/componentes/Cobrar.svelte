@@ -3,7 +3,8 @@
   import { fly } from 'svelte/transition';
   import { api, type Metodo, type PagoEntrada, type Venta } from '../api';
   import { soles } from '../datos';
-  import { avisar } from '../estado.svelte';
+  import { app, avisar } from '../estado.svelte';
+  import IconoMetodo from './IconoMetodo.svelte';
   import { aCentimos, aSoles } from '../inventario.svelte';
   import { carrito, calculoActual, itemsDeVenta, METODOS } from '../ventas/carrito.svelte';
   import { efectivoSugerido, redondeoEfectivo } from '../ventas/calculo';
@@ -16,6 +17,16 @@
   let tocado = $state(false);
   let ocupado = $state(false);
   let error = $state('');
+  /** QR de cobro del negocio (undefined: cargando; null: aún no se estableció). */
+  let qr = $state<string | null | undefined>(undefined);
+  api.qrPago().then((q) => (qr = q)).catch(() => (qr = null));
+  const yape = $derived(pagos.filter((p) => p.metodo === 'yape_plin').reduce((s, p) => s + p.montoCent, 0));
+  const hayYape = $derived(pagos.some((p) => p.metodo === 'yape_plin'));
+
+  function irAAjustes() {
+    app.vista = 'ajustes';
+    onCerrar();
+  }
 
   const redondeo = $derived(redondeoEfectivo(calc.totalPrevioCent, pagos));
   const total = $derived(calc.totalPrevioCent - redondeo);
@@ -58,6 +69,7 @@
         items: itemsDeVenta(),
         tipoClienteId: carrito.tipoId,
         clienteId: carrito.cliente?.id ?? null,
+        clienteNombre: carrito.clienteNombre.trim() || null,
         descuento: carrito.descuento,
         pagos: pagos.map((p) => ({ ...p })),
       });
@@ -90,7 +102,7 @@
       <ul class="pagos">
         {#each pagos as p, i (i)}
           <li>
-            <span class="m">{METODOS[p.metodo].emoji} {METODOS[p.metodo].nombre}</span>
+            <span class="m"><IconoMetodo metodo={p.metodo} tam={22} /> {METODOS[p.metodo].nombre}</span>
             <strong>{soles(p.montoCent)}</strong>
             <button class="quitar" onclick={() => pagos.splice(i, 1)} aria-label="Quitar este pago">✕</button>
             {#if p.metodo === 'efectivo'}
@@ -135,12 +147,37 @@
         <div class="metodos">
           {#each Object.entries(METODOS) as [id, m] (id)}
             <button class="metodo" onclick={() => agregarPago(id as Metodo)} disabled={falta < 0 && pagos.length > 0}>
-              <span class="e">{m.emoji}</span>
+              <span class="e"><IconoMetodo metodo={id as Metodo} tam={30} /></span>
               <span>{m.nombre}</span>
               <small>{soles(montoPara(id as Metodo))}</small>
             </button>
           {/each}
         </div>
+      </div>
+    {/if}
+
+    {#if hayYape}
+      <div class="qr" data-testid="panel-yape" transition:fly={{ y: 10, duration: 200 }}>
+        {#if qr}
+          <img src={qr} alt="QR de Yape del negocio" />
+          <span class="pide">Pídele al cliente que escanee y yape <strong>{soles(yape)}</strong></span>
+        {:else if qr === null}
+          <div class="sin-qr">
+            <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+              <g fill="#c99a6b" stroke="#8a5a32" stroke-width="2" stroke-linejoin="round">
+                <circle cx="17" cy="14" r="7" /><circle cx="47" cy="14" r="7" /><circle cx="32" cy="34" r="22" />
+              </g>
+              <ellipse cx="32" cy="42" rx="9" ry="7" fill="#f1dcb9" stroke="#8a5a32" stroke-width="1.6" />
+              <ellipse cx="32" cy="39" rx="3.2" ry="2.4" fill="#4a2f1d" />
+              <circle cx="23" cy="30" r="2.8" fill="#4a2f1d" /><circle cx="41" cy="30" r="2.8" fill="#4a2f1d" />
+              <path d="M18 23 l8 3 M46 23 l-8 3" stroke="#4a2f1d" stroke-width="2" stroke-linecap="round" />
+              <path d="M26 49 q3 -3 6 0 t6 0" fill="none" stroke="#8a5a32" stroke-width="1.8" stroke-linecap="round" />
+              <text x="50" y="20" font-size="16" font-weight="800" fill="#e0537a">?</text>
+              <path d="M12 30 q-2 4 0 6 q2 -2 0 -6z" fill="#9ad6f0" />
+            </svg>
+            <p><strong>El QR de Yape aún no se estableció.</strong><br />Ir a <button class="enlace" onclick={irAAjustes}>Ajustes → Métodos de pago</button></p>
+          </div>
+        {/if}
       </div>
     {/if}
 
@@ -339,6 +376,42 @@
   .metodo small {
     color: var(--muted);
     font-weight: 700;
+  }
+  .qr {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .qr img {
+    width: min(230px, 70%);
+    border-radius: 16px;
+    box-shadow: var(--sombra-suave);
+  }
+  .pide {
+    font-weight: 700;
+    font-size: 14px;
+    text-align: center;
+  }
+  .sin-qr {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px;
+    border: 3px dashed color-mix(in srgb, #742284 55%, transparent);
+    border-radius: 18px;
+    background: color-mix(in srgb, #742284 6%, var(--surface));
+  }
+  .sin-qr p {
+    margin: 0;
+    font-size: 14px;
+  }
+  .enlace {
+    color: var(--primary-strong);
+    font-weight: 800;
+    text-decoration: underline;
   }
   .estado {
     text-align: center;

@@ -115,6 +115,7 @@ interface Datos {
   tipos?: TipoCliente[];
   tope?: number;
   clientes?: Cliente[];
+  qrPago?: string | null;
 }
 
 const CLAVE = 'demo-libreria';
@@ -598,13 +599,16 @@ export class ApiDemo implements Api {
     e.items.forEach((i, k) => (libros[k].stock -= i.cantidad));
     const ventas = (this.d.ventas ??= []);
     const cliente = e.clienteId ? (this.d.clientes ?? []).find((c) => c.id === e.clienteId) : undefined;
+    if (e.clienteId && !cliente) throw new Error('No se encontró ese cliente');
+    const nombreCliente = e.clienteNombre?.trim() || cliente?.nombre || 'Cliente';
+    if ([...nombreCliente].length > 80) throw new Error('El nombre del cliente es demasiado largo (máximo 80 letras)');
     const venta: Venta = {
       id: Math.max(0, ...ventas.map((v) => v.id)) + 1,
       fecha: new Date().toISOString(),
       usuarioId: yo.id,
       vendedora: yo.nombre,
       clienteId: cliente?.id ?? null,
-      cliente: cliente?.nombre ?? null,
+      cliente: nombreCliente,
       tipoNombre: tipo.nombre,
       tipoPct: tipo.descuentoPct,
       subtotalCent: calc.subtotalCent,
@@ -726,5 +730,24 @@ export class ApiDemo implements Api {
     cs.push(c);
     this.persistir();
     return { ...c };
+  }
+
+  async qrPago() {
+    this.exigirSesion();
+    return this.d.qrPago ?? null;
+  }
+
+  async guardarQrPago(origen: string) {
+    this.exigirDuena('cambiar el QR de pago');
+    if (!origen.startsWith('data:image/')) throw new Error('Ese archivo no es una imagen compatible (PNG, JPG, WebP o GIF)');
+    this.d.qrPago = origen;
+    this.persistir();
+    return origen;
+  }
+
+  async quitarQrPago() {
+    this.exigirDuena('cambiar el QR de pago');
+    this.d.qrPago = null;
+    this.persistir();
   }
 }

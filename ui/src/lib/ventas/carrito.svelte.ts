@@ -13,6 +13,8 @@ export const carrito = $state({
   lineas: [] as LineaCarrito[],
   tipoId: 0,
   cliente: null as Cliente | null,
+  /** Nombre que da el cliente (opcional; vacío = «Cliente»). */
+  clienteNombre: '',
   descuento: null as Descuento | null,
   tipos: [] as TipoCliente[],
   /** % máximo de descuento a mano para vendedoras. */
@@ -20,7 +22,7 @@ export const carrito = $state({
 });
 
 /** Sube cada vez que se registra una venta (la lista de «Ventas de hoy» y «Inicio» se vuelven a pedir). */
-export const ventasCambio = $state({ version: 0, celebracion: 0 });
+export const ventasCambio = $state({ version: 0 });
 
 export async function prepararVentas() {
   const [tipos, tope] = await Promise.all([api.tiposCliente(), api.topeDescuento()]);
@@ -51,6 +53,7 @@ export function quitar(id: number) {
 export function vaciar() {
   carrito.lineas = [];
   carrito.cliente = null;
+  carrito.clienteNombre = '';
   carrito.descuento = null;
   const publico = carrito.tipos.find((t) => t.descuentoPct === 0) ?? carrito.tipos[0];
   carrito.tipoId = publico?.id ?? 0;
