@@ -20,3 +20,7 @@ portadas/
 Thumbs.db
 .idea/
 .vscode/
+
+# App Tauri
+app/src-tauri/gen/
+ui/dist/
