@@ -10,6 +10,10 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  Encargo,
+  EncargoEntrada,
+  EstadoEncargo,
+  FichaCliente,
   Descuento,
   Metodo,
   DatosConfiguracion,
@@ -116,7 +120,16 @@ interface Datos {
   tope?: number;
   clientes?: Cliente[];
   qrPago?: string | null;
+  encargos?: EncargoDemo[];
+  encargoPagos?: { encargoId: number; metodo: Metodo; montoCent: number; fecha: string }[];
+  plantillaWhatsapp?: string | null;
 }
+
+type EncargoDemo = Omit<Encargo, 'cliente' | 'telefono' | 'adelantoCent' | 'precioCent' | 'stock' | 'portada' | 'colorTapa' | 'formato' | 'categoria'>;
+
+const PLANTILLA_DEFECTO =
+  '¡Hola, {cliente}! 📚 Te escribimos de la librería {tienda}. Ya llegó tu encargo: «{libro}». Te lo tenemos separado para cuando puedas pasar a recogerlo. {saldo}¡Te esperamos! 💕';
+
 
 const CLAVE = 'demo-libreria';
 const SUGERIDA = 'C:\\Users\\Tienda\\Documents\\Librería SIGLO XXI';
@@ -582,12 +595,21 @@ export class ApiDemo implements Api {
       if (lineas.some((l) => pasa(l.precioCent * l.cantidad, l.descuento)) || pasa(base, e.descuento))
         throw new Error(`Los descuentos a mano llegan hasta ${tope} % sin la Dueña`);
     }
-    if (!e.pagos.length) throw new Error('Agrega al menos un pago');
-    if (e.pagos.some((p) => p.montoCent <= 0)) throw new Error('Cada pago debe ser de más de S/ 0.00');
-    const redondeo = redondeoEfectivo(calc.totalPrevioCent, e.pagos);
-    const total = calc.totalPrevioCent - redondeo;
-    const pagado = e.pagos.reduce((s, p) => s + p.montoCent, 0);
     const soles = (c: number) => `S/ ${(c / 100).toFixed(2)}`;
+    let encargo: EncargoDemo | undefined;
+    if (e.encargoId) {
+      encargo = (this.d.encargos ?? []).find((x) => x.id === e.encargoId);
+      if (!encargo) throw new Error('No se encontró ese encargo');
+      if (encargo.estado === 'entregado' || encargo.estado === 'cancelado') throw new Error(`Ese encargo ya está ${encargo.estado}`);
+      e = { ...e, clienteId: e.clienteId ?? encargo.clienteId };
+    }
+    const adelanto = encargo ? this.adelanto(encargo.id) : 0;
+    if (adelanto > calc.totalPrevioCent) throw new Error(`El adelanto (${soles(adelanto)}) es mayor que el total de la venta (${soles(calc.totalPrevioCent)})`);
+    if (!e.pagos.length && adelanto < calc.totalPrevioCent) throw new Error('Agrega al menos un pago');
+    if (e.pagos.some((p) => p.montoCent <= 0)) throw new Error('Cada pago debe ser de más de S/ 0.00');
+    const redondeo = redondeoEfectivo(calc.totalPrevioCent, adelanto, e.pagos);
+    const total = calc.totalPrevioCent - redondeo;
+    const pagado = e.pagos.reduce((s, p) => s + p.montoCent, 0) + adelanto;
     if (pagado < total) throw new Error(`Faltan ${soles(total - pagado)} por cobrar`);
     if (pagado > total) throw new Error(`Los pagos suman ${soles(pagado - total)} más que el total`);
     if (e.pagos.some((p) => p.recibidoCent != null && (p.metodo !== 'efectivo' || p.recibidoCent < p.montoCent)))
@@ -618,6 +640,8 @@ export class ApiDemo implements Api {
       anulada: false,
       anuladaFecha: null,
       motivoAnulacion: '',
+      encargoId: encargo?.id ?? null,
+      adelantoCent: adelanto,
       items: e.items.map((i, k) => ({
         libroId: i.libroId,
         titulo: libros[k].titulo,
@@ -633,6 +657,7 @@ export class ApiDemo implements Api {
       ),
     };
     ventas.push(venta);
+    if (encargo) Object.assign(encargo, { estado: 'entregado', ventaId: venta.id, fechaCierre: venta.fecha, actualizado: venta.fecha });
     this.persistir();
     return structuredClone(venta);
   }
@@ -650,6 +675,8 @@ export class ApiDemo implements Api {
       const l = (this.d.libros ?? []).find((x) => x.id === i.libroId);
       if (l) l.stock += i.cantidad;
     }
+    const enc = (this.d.encargos ?? []).find((x) => x.ventaId === v.id);
+    if (enc) Object.assign(enc, { estado: 'avisado', ventaId: null, fechaCierre: null, actualizado: new Date().toISOString() });
     this.persistir();
     return structuredClone(v);
   }
@@ -668,7 +695,11 @@ export class ApiDemo implements Api {
     const ok = del.filter((v) => !v.anulada);
     const por = new Map<Metodo, number>();
     for (const p of ok.flatMap((v) => v.pagos)) por.set(p.metodo, (por.get(p.metodo) ?? 0) + p.montoCent);
+    const adelantos = (this.d.encargoPagos ?? []).filter((p) => p.fecha >= desde && p.fecha < hasta);
+    for (const p of adelantos) por.set(p.metodo, (por.get(p.metodo) ?? 0) + p.montoCent);
+    for (const [m, v] of por) if (!v) por.delete(m);
     return {
+      adelantosCent: adelantos.reduce((s, p) => s + p.montoCent, 0),
       ventas: ok.length,
       anuladas: del.length - ok.length,
       unidades: ok.reduce((s, v) => s + v.items.reduce((n, i) => n + i.cantidad, 0), 0),
@@ -717,19 +748,42 @@ export class ApiDemo implements Api {
     this.exigirSesion();
     const q = texto.trim().toLowerCase();
     return (this.d.clientes ?? [])
-      .filter((c) => c.nombre.toLowerCase().includes(q) || c.telefono.includes(q))
-      .slice(-20)
+      .filter((c) => c.nombre.toLowerCase().includes(q) || c.telefono.includes(q) || (q.replace(/\D/g, '').length >= 3 && c.telefono.replace(/\D/g, '').includes(q.replace(/\D/g, ''))))
+      .slice(-30)
       .reverse();
   }
 
   async crearCliente(e: ClienteEntrada) {
+    return this.guardarCliente({ ...e, id: null });
+  }
+
+  async guardarCliente(e: ClienteEntrada) {
     this.exigirSesion();
-    if (!e.nombre.trim()) throw new Error('Escribe el nombre del cliente');
+    return { ...this.guardarClienteSinSesion(e) };
+  }
+
+  private guardarClienteSinSesion(e: ClienteEntrada): Cliente {
+    const nombre = e.nombre.trim();
+    if (!nombre) throw new Error('Escribe el nombre del cliente');
+    if ([...nombre].length > 80) throw new Error('El nombre es demasiado largo (máximo 80 letras)');
+    const telefono = (e.telefono ?? '').trim();
+    const n = telefono.replace(/\D/g, '').length;
+    if (telefono && (n < 6 || n > 15)) throw new Error('El teléfono debe tener entre 6 y 15 números');
+    const correo = (e.correo ?? '').trim();
+    if (correo && !/^[^@\s]+@[^@\s.][^@\s]*\.[^@\s.]+$/.test(correo)) throw new Error('Ese correo no parece válido');
     const cs = (this.d.clientes ??= []);
-    const c: Cliente = { id: Math.max(0, ...cs.map((x) => x.id)) + 1, nombre: e.nombre.trim(), telefono: (e.telefono ?? '').trim(), tipoClienteId: e.tipoClienteId ?? null };
-    cs.push(c);
+    const datos = { nombre, telefono, correo, tipoClienteId: e.tipoClienteId ?? null, notas: (e.notas ?? '').trim() };
+    let c: Cliente;
+    if (e.id) {
+      const x = cs.find((k) => k.id === e.id);
+      if (!x) throw new Error('No se encontró ese cliente');
+      c = Object.assign(x, datos);
+    } else {
+      c = { id: Math.max(0, ...cs.map((x) => x.id)) + 1, ...datos };
+      cs.push(c);
+    }
     this.persistir();
-    return { ...c };
+    return c;
   }
 
   async qrPago() {
@@ -749,5 +803,194 @@ export class ApiDemo implements Api {
     this.exigirDuena('cambiar el QR de pago');
     this.d.qrPago = null;
     this.persistir();
+  }
+
+  // ── encargos ──
+  private adelanto(id: number) {
+    return (this.d.encargoPagos ?? []).filter((p) => p.encargoId === id).reduce((s, p) => s + p.montoCent, 0);
+  }
+
+  private entregarEncargo(e: EncargoDemo): Encargo {
+    const c = (this.d.clientes ?? []).find((x) => x.id === e.clienteId);
+    const l = e.libroId ? (this.d.libros ?? []).find((x) => x.id === e.libroId) : undefined;
+    return structuredClone({
+      ...e,
+      cliente: c?.nombre ?? 'Cliente',
+      telefono: c?.telefono ?? '',
+      adelantoCent: this.adelanto(e.id),
+      precioCent: l?.precioCent ?? null,
+      stock: l?.stock ?? null,
+      portada: l?.portada ?? null,
+      colorTapa: l?.colorTapa ?? null,
+      formato: l?.formato ?? null,
+      categoria: l?.categoria ?? null,
+    });
+  }
+
+  private encargoId(id: number) {
+    const e = (this.d.encargos ?? []).find((x) => x.id === id);
+    if (!e) throw new Error('No se encontró ese encargo');
+    return e;
+  }
+
+  async encargos(activos: boolean) {
+    this.exigirSesion();
+    const cerr = (e: EncargoDemo) => e.estado === 'entregado' || e.estado === 'cancelado';
+    const l = (this.d.encargos ?? []).filter((e) => (activos ? !cerr(e) : cerr(e)));
+    if (activos) l.sort((a, b) => a.creado.localeCompare(b.creado) || a.id - b.id);
+    else l.sort((a, b) => (b.fechaCierre ?? '').localeCompare(a.fechaCierre ?? '') || b.id - a.id);
+    return l.slice(0, activos ? undefined : 100).map((e) => this.entregarEncargo(e));
+  }
+
+  async crearEncargo(e: EncargoEntrada) {
+    const yo = this.exigirSesion();
+    const cantidad = e.cantidad ?? 1;
+    if (cantidad < 1 || cantidad > 999) throw new Error('La cantidad debe ser al menos 1');
+    if (e.adelanto && e.adelanto.montoCent <= 0) throw new Error('El adelanto debe ser de más de S/ 0.00');
+    let titulo = e.titulo.trim();
+    let autor = (e.autor ?? '').trim();
+    if (e.libroId) {
+      const l = this.libros.find((x) => x.id === e.libroId);
+      if (!l) throw new Error('No se encontró ese libro');
+      titulo ||= l.titulo;
+      autor ||= l.autor;
+    }
+    if (!titulo) throw new Error('Escribe qué libro encarga el cliente');
+    let clienteId: number;
+    if (e.clienteId) {
+      if (!(this.d.clientes ?? []).some((c) => c.id === e.clienteId)) throw new Error('No se encontró ese cliente');
+      clienteId = e.clienteId;
+    } else if (e.cliente) clienteId = this.guardarClienteSinSesion({ ...e.cliente, id: null }).id;
+    else throw new Error('Elige o registra al cliente que hace el encargo');
+    const es = (this.d.encargos ??= []);
+    const ahora = new Date().toISOString();
+    const nuevo: EncargoDemo = {
+      id: Math.max(0, ...es.map((x) => x.id)) + 1,
+      clienteId,
+      libroId: e.libroId ?? null,
+      titulo,
+      autor,
+      cantidad,
+      estado: 'pendiente',
+      notas: (e.notas ?? '').trim(),
+      creado: ahora,
+      actualizado: ahora,
+      fechaPedido: null,
+      fechaLlego: null,
+      fechaAviso: null,
+      fechaCierre: null,
+      ventaId: null,
+    };
+    es.push(nuevo);
+    if (e.adelanto) (this.d.encargoPagos ??= []).push({ encargoId: nuevo.id, metodo: e.adelanto.metodo, montoCent: e.adelanto.montoCent, fecha: ahora });
+    void yo;
+    this.persistir();
+    return this.entregarEncargo(nuevo);
+  }
+
+  async estadoEncargo(id: number, nuevo: EstadoEncargo, devolverAdelanto = false) {
+    this.exigirSesion();
+    if (nuevo === 'entregado') throw new Error('Para entregar un encargo, usa «Vender y entregar»');
+    const e = this.encargoId(id);
+    if (e.estado === 'entregado' || e.estado === 'cancelado') throw new Error(`Ese encargo ya está ${e.estado}`);
+    const ahora = new Date().toISOString();
+    e.estado = nuevo;
+    e.actualizado = ahora;
+    if (nuevo === 'pedido') e.fechaPedido = ahora;
+    if (nuevo === 'llego') e.fechaLlego = ahora;
+    if (nuevo === 'avisado') e.fechaAviso = ahora;
+    if (nuevo === 'cancelado') {
+      e.fechaCierre = ahora;
+      if (devolverAdelanto) {
+        const por = new Map<Metodo, number>();
+        for (const p of (this.d.encargoPagos ?? []).filter((p) => p.encargoId === id)) por.set(p.metodo, (por.get(p.metodo) ?? 0) + p.montoCent);
+        for (const [metodo, monto] of por) if (monto > 0) this.d.encargoPagos!.push({ encargoId: id, metodo, montoCent: -monto, fecha: ahora });
+      }
+    }
+    this.persistir();
+    return this.entregarEncargo(e);
+  }
+
+  async enlazarLibroEncargo(id: number, libroId: number) {
+    this.exigirSesion();
+    const e = this.encargoId(id);
+    if (e.estado === 'entregado' || e.estado === 'cancelado') throw new Error('Ese encargo ya no está activo');
+    const l = this.libros.find((x) => x.id === libroId);
+    if (!l) throw new Error('No se encontró ese libro');
+    Object.assign(e, { libroId, titulo: l.titulo, autor: l.autor || e.autor, actualizado: new Date().toISOString() });
+    this.persistir();
+    return this.entregarEncargo(e);
+  }
+
+  private porLibro(libroId: number, estados: EstadoEncargo[]) {
+    this.exigirSesion();
+    return (this.d.encargos ?? []).filter((e) => e.libroId === libroId && estados.includes(e.estado)).map((e) => this.entregarEncargo(e));
+  }
+  async encargosEsperando(libroId: number) {
+    return this.porLibro(libroId, ['pendiente', 'pedido']);
+  }
+  async encargosApartados(libroId: number) {
+    return this.porLibro(libroId, ['llego', 'avisado']);
+  }
+
+  async encargosCoincidencias(titulo: string) {
+    this.exigirSesion();
+    const clave = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const b = clave(titulo);
+    if (b.length < 3) return [];
+    return (this.d.encargos ?? [])
+      .filter((e) => !e.libroId && e.estado !== 'entregado' && e.estado !== 'cancelado')
+      .filter((e) => {
+        const k = clave(e.titulo);
+        return k === b || (k.length >= 5 && b.includes(k)) || (b.length >= 5 && k.includes(b));
+      })
+      .map((e) => this.entregarEncargo(e));
+  }
+
+  async fichaCliente(id: number): Promise<FichaCliente> {
+    this.exigirSesion();
+    const cliente = (this.d.clientes ?? []).find((c) => c.id === id);
+    if (!cliente) throw new Error('No se encontró ese cliente');
+    const compras = (this.d.ventas ?? [])
+      .filter((v) => v.clienteId === id && !v.anulada)
+      .sort((a, b) => b.fecha.localeCompare(a.fecha))
+      .map((v) => ({ ventaId: v.id, fecha: v.fecha, totalCent: v.totalCent, libros: v.items.map((i) => (i.cantidad > 1 ? `${i.cantidad}× ` : '') + i.titulo).join(', ') }));
+    const encargos = (this.d.encargos ?? [])
+      .filter((e) => e.clienteId === id)
+      .sort((a, b) => b.creado.localeCompare(a.creado))
+      .map((e) => ({ id: e.id, titulo: e.titulo, estado: e.estado, creado: e.creado }));
+    return { cliente: { ...cliente }, compras, encargos, totalCompradoCent: compras.reduce((s, c) => s + c.totalCent, 0) };
+  }
+
+  async plantillaWhatsapp(texto?: string) {
+    this.exigirSesion();
+    if (texto !== undefined) {
+      this.exigirDuena('cambiar el mensaje de WhatsApp');
+      if ([...texto].length > 1000) throw new Error('El mensaje es demasiado largo (máximo 1000 letras)');
+      this.d.plantillaWhatsapp = texto.trim() || null;
+      this.persistir();
+    }
+    return this.d.plantillaWhatsapp || PLANTILLA_DEFECTO;
+  }
+
+  async avisarWhatsapp(id: number) {
+    this.exigirSesion();
+    const soles = (c: number) => `S/ ${(c / 100).toFixed(2)}`;
+    let e = this.entregarEncargo(this.encargoId(id));
+    const total = e.precioCent != null ? e.precioCent * e.cantidad - e.adelantoCent : null;
+    const saldo =
+      total != null && total > 0 ? `Saldo a pagar: ${soles(total)}. ` : total != null && e.adelantoCent > 0 ? 'Ya está pagado por completo. ' : e.adelantoCent > 0 ? `Ya dejaste ${soles(e.adelantoCent)} de adelanto. ` : '';
+    const texto = (await this.plantillaWhatsapp())
+      .replaceAll('{cliente}', e.cliente.split(/\s+/)[0] ?? e.cliente)
+      .replaceAll('{libro}', e.titulo)
+      .replaceAll('{tienda}', this.d.tienda || 'SIGLO XXI')
+      .replaceAll('{saldo}', saldo);
+    let num = e.telefono.replace(/\D/g, '');
+    if (num.length === 9 && num.startsWith('9')) num = `51${num}`;
+    if (num.length < 8) throw new Error('Este cliente no tiene un teléfono válido para WhatsApp: agrégalo en su ficha');
+    const url = `https://wa.me/${num}?text=${encodeURIComponent(texto)}`;
+    if (e.estado === 'llego') e = await this.estadoEncargo(id, 'avisado');
+    window.open(url, '_blank', 'noopener');
+    return { encargo: e, url };
   }
 }

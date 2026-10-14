@@ -39,12 +39,12 @@ export function calcular(lineas: LineaEntrada[], tipoPct: number, total?: Descue
 
 /**
  * En efectivo no circulan monedas de 1 y 5 céntimos: lo que se paga en efectivo se baja a múltiplo de
- * 10 céntimos, a favor del cliente. Tarjeta, Yape/Plin y transferencia cobran exacto.
+ * 10 céntimos, a favor del cliente. Tarjeta, Yape/Plin, transferencia y el adelanto de un encargo cobran exacto.
  */
-export function redondeoEfectivo(totalPrevio: number, pagos: { metodo: Metodo; montoCent: number }[]): number {
+export function redondeoEfectivo(totalPrevio: number, adelanto: number, pagos: { metodo: Metodo; montoCent: number }[]): number {
   if (!pagos.some((p) => p.metodo === 'efectivo')) return 0;
   const otros = pagos.filter((p) => p.metodo !== 'efectivo').reduce((s, p) => s + p.montoCent, 0);
-  const efectivo = totalPrevio - otros;
+  const efectivo = totalPrevio - adelanto - otros;
   return efectivo >= 10 ? efectivo % 10 : 0;
 }
 

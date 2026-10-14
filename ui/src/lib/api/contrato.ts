@@ -3,6 +3,10 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  Encargo,
+  EncargoEntrada,
+  EstadoEncargo,
+  FichaCliente,
   DatosConfiguracion,
   EstadoInicial,
   Filtros,
@@ -86,4 +90,24 @@ export interface Api {
   /** Solo la Dueña. `origen`: ruta (Tauri) o dataURL (demo), como la devuelve `elegirImagen`. */
   guardarQrPago(origen: string): Promise<string | null>;
   quitarQrPago(): Promise<void>;
+
+  // ── encargos y clientes ──
+  /** Activos (tablero) o cerrados (entregados/cancelados recientes). */
+  encargos(activos: boolean): Promise<Encargo[]>;
+  crearEncargo(e: EncargoEntrada): Promise<Encargo>;
+  /** «entregado» no: eso ocurre al vender. Al cancelar, `devolverAdelanto` anota la devolución en la caja. */
+  estadoEncargo(id: number, nuevo: EstadoEncargo, devolverAdelanto?: boolean): Promise<Encargo>;
+  enlazarLibroEncargo(id: number, libroId: number): Promise<Encargo>;
+  /** Encargos que esperan este libro (pendiente/pedido). */
+  encargosEsperando(libroId: number): Promise<Encargo[]>;
+  /** Encargos que ya tienen este libro apartado (llegó/avisado). */
+  encargosApartados(libroId: number): Promise<Encargo[]>;
+  /** Encargos activos sin libro cuyo título se parece. */
+  encargosCoincidencias(titulo: string): Promise<Encargo[]>;
+  guardarCliente(e: ClienteEntrada): Promise<Cliente>;
+  fichaCliente(id: number): Promise<FichaCliente>;
+  /** Plantilla del aviso. Con `texto` la cambia (solo la Dueña; vacío = la de fábrica). */
+  plantillaWhatsapp(texto?: string): Promise<string>;
+  /** Abre WhatsApp con el aviso redactado; si estaba «llegó», pasa a «avisado». */
+  avisarWhatsapp(id: number): Promise<{ encargo: Encargo; url: string }>;
 }

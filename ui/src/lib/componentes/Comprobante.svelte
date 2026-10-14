@@ -85,6 +85,7 @@
       <div><dt>Subtotal</dt><dd>{soles(venta.subtotalCent)}</dd></div>
       {#if venta.descuentoCent}<div class="verde"><dt>Descuentos{#if venta.tipoPct} ({venta.tipoNombre}){/if}</dt><dd>−{soles(venta.descuentoCent)}</dd></div>{/if}
       {#if venta.redondeoCent}<div class="verde"><dt>Redondeo en efectivo</dt><dd>−{soles(venta.redondeoCent)}</dd></div>{/if}
+      {#if venta.adelantoCent}<div><dt>Ya pagado (adelanto del encargo)</dt><dd>−{soles(venta.adelantoCent)}</dd></div>{/if}
       <div class="gran"><dt>Total</dt><dd data-testid="comprobante-total">{soles(venta.totalCent)}</dd></div>
     </dl>
 

@@ -6,6 +6,7 @@
   import { api, type Formato, type LibroApi, type ResultadoLinea, type Sugerencia, type UbicacionApi } from '../api';
   import { CATEGORIAS, soles, type Libro } from '../datos';
   import { avisar } from '../estado.svelte';
+  import { revisarLlegada } from '../encargos.svelte';
   import { aCentimos, aSoles, borrador, inventario, inventarioCambio, vista, type BorradorLibro } from '../inventario.svelte';
   import { esDuena } from '../sesion.svelte';
   import { compartimentos, infoTipo, resolver, textoPosicion, tipoDeEstante } from '../tienda/modelo';
@@ -204,6 +205,8 @@
       avisar(nuevo ? `«${l.titulo}» agregado 📚` : 'Cambios guardados');
       onGuardado?.(vista(l));
       onCerrar();
+      // ¿algún cliente encargó este libro? (alta nueva: también por título parecido)
+      if (nuevo) void revisarLlegada({ id: l.id, titulo: l.titulo, stock: l.stock }, true);
     } catch (x) {
       error = (x as Error).message;
     } finally {
@@ -219,6 +222,7 @@
       const l = await api.ajustarStock(libro.id, d, motivo, nota);
       inventarioCambio();
       avisar(`Stock: ${l.stock}`);
+      if (d > 0) void revisarLlegada({ id: l.id, titulo: l.titulo, stock: l.stock }, false);
       onGuardado?.(vista(l));
       delta = '';
       nota = '';

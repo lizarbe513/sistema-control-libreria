@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { abrirNuevoEncargo } from '../encargos.svelte';
   import { resolver, textoCorto } from '../tienda/modelo';
   import { tienda } from '../tienda/tienda.svelte';
   import { flip } from 'svelte/animate';
@@ -169,7 +170,7 @@
       </svg>
       <h3>No encontré “{app.consulta}”</h3>
       <p>Puede que no lo tengamos todavía. ¡No dejes ir al cliente!</p>
-      <button class="btn btn-primario" onclick={() => avisar(`Encargo precargado: “${app.consulta}” 📦`)}>
+      <button class="btn btn-primario" onclick={() => abrirNuevoEncargo({ titulo: app.consulta })}>
         <Icono nombre="encargos" tam={18} /> ¿Lo encargamos?
       </button>
     </div>

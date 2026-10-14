@@ -6,6 +6,10 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  Encargo,
+  EncargoEntrada,
+  EstadoEncargo,
+  FichaCliente,
   DatosConfiguracion,
   EstadoInicial,
   Filtros,
@@ -184,5 +188,41 @@ export class ApiTauri implements Api {
   }
   quitarQrPago() {
     return this.llamar<void>('qr_pago_quitar');
+  }
+
+  // ── encargos y clientes ──
+  encargos(activos: boolean) {
+    return this.llamar<Encargo[]>('encargos_listar', { activos });
+  }
+  crearEncargo(entrada: EncargoEntrada) {
+    return this.llamar<Encargo>('encargo_crear', { entrada });
+  }
+  estadoEncargo(id: number, nuevo: EstadoEncargo, devolverAdelanto?: boolean) {
+    return this.llamar<Encargo>('encargo_estado', { id, nuevo, devolverAdelanto: devolverAdelanto ?? false });
+  }
+  enlazarLibroEncargo(id: number, libroId: number) {
+    return this.llamar<Encargo>('encargo_enlazar_libro', { id, libroId });
+  }
+  encargosEsperando(libroId: number) {
+    return this.llamar<Encargo[]>('encargos_esperando', { libroId });
+  }
+  encargosApartados(libroId: number) {
+    return this.llamar<Encargo[]>('encargos_apartados', { libroId });
+  }
+  encargosCoincidencias(titulo: string) {
+    return this.llamar<Encargo[]>('encargos_coincidencias', { titulo });
+  }
+  guardarCliente(entrada: ClienteEntrada) {
+    return this.llamar<Cliente>('cliente_guardar', { entrada });
+  }
+  fichaCliente(id: number) {
+    return this.llamar<FichaCliente>('cliente_ficha', { id });
+  }
+  plantillaWhatsapp(texto?: string) {
+    return this.llamar<string>('whatsapp_plantilla', { texto: texto ?? null });
+  }
+  async avisarWhatsapp(id: number) {
+    const [encargo, url] = await this.llamar<[Encargo, string]>('encargo_avisar_whatsapp', { id });
+    return { encargo, url };
   }
 }

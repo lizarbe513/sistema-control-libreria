@@ -14,6 +14,9 @@
   import EditorTienda from './lib/vistas/EditorTienda.svelte';
   import Libros from './lib/vistas/Libros.svelte';
   import Inicio from './lib/vistas/Inicio.svelte';
+  import CartaLlego from './lib/componentes/CartaLlego.svelte';
+  import { encargosUI } from './lib/encargos.svelte';
+  import Encargos from './lib/vistas/Encargos.svelte';
   import Pendiente from './lib/vistas/Pendiente.svelte';
   import Vender from './lib/vistas/Vender.svelte';
   import Bienvenida from './lib/acceso/Bienvenida.svelte';
@@ -88,6 +91,8 @@
             <Libros />
           {:else if app.vista === 'vender'}
             <Vender />
+          {:else if app.vista === 'encargos'}
+            <Encargos />
           {:else if app.vista === 'ajustes'}
             <Ajustes />
           {:else if app.vista === 'tienda'}
@@ -105,6 +110,10 @@
     {/if}
   </div>
   {#if !(app.enfoque && app.vista === 'tienda')}<Libreta />{/if}
+{/if}
+
+{#if encargosUI.carta && sesion.usuaria}
+  {#key encargosUI.carta}<CartaLlego carta={encargosUI.carta} />{/key}
 {/if}
 
 {#if app.toast}

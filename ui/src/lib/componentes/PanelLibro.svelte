@@ -4,9 +4,9 @@
   import { inventario } from '../inventario.svelte';
   import { esDuena } from '../sesion.svelte';
   import { agregar } from '../ventas/carrito.svelte';
+  import { abrirNuevoEncargo } from '../encargos.svelte';
 
   const puedeEditar = $derived(esDuena() || inventario.vendedoresEditan);
-  const PRONTO = 'Los encargos llegan en la próxima etapa del programa 🌱';
   import Icono from './Icono.svelte';
   import Libro3D from './Libro3D.svelte';
   import Ubicacion from './Ubicacion.svelte';
@@ -64,7 +64,7 @@
           <div class="aviso-agotado">
             Este libro está agotado. ¿El cliente lo quiere igual? Haz un encargo y te avisamos cuando llegue.
           </div>
-          <button class="btn btn-primario" onclick={() => avisar(PRONTO)}>
+          <button class="btn btn-primario" onclick={() => libro && abrirNuevoEncargo({ libroId: libro.id, titulo: libro.titulo })}>
             <Icono nombre="encargos" tam={18} /> ¿Lo encargamos?
           </button>
         {/if}

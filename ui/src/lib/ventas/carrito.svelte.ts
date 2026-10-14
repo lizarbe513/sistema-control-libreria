@@ -1,5 +1,5 @@
 // El carrito de la venta en curso. Vive en memoria: sobrevive al cambiar de vista y se vacía al cerrar sesión.
-import { api, type Cliente, type Descuento, type ItemEntrada, type TipoCliente } from '../api';
+import { api, type Cliente, type Descuento, type Encargo, type ItemEntrada, type TipoCliente } from '../api';
 import type { Libro } from '../datos';
 import { calcular, montoDescuento, type Calculo } from './calculo';
 
@@ -15,6 +15,8 @@ export const carrito = $state({
   cliente: null as Cliente | null,
   /** Nombre que da el cliente (opcional; vacío = «Cliente»). */
   clienteNombre: '',
+  /** Entrega de un encargo: su adelanto se descuenta al cobrar. */
+  encargo: null as { id: number; adelantoCent: number; titulo: string; cliente: string } | null,
   descuento: null as Descuento | null,
   tipos: [] as TipoCliente[],
   /** % máximo de descuento a mano para vendedoras. */
@@ -54,6 +56,7 @@ export function vaciar() {
   carrito.lineas = [];
   carrito.cliente = null;
   carrito.clienteNombre = '';
+  carrito.encargo = null;
   carrito.descuento = null;
   const publico = carrito.tipos.find((t) => t.descuentoPct === 0) ?? carrito.tipos[0];
   carrito.tipoId = publico?.id ?? 0;
@@ -94,3 +97,15 @@ export const METODOS = {
   yape_plin: { nombre: 'Yape / Plin', emoji: '📱' },
   transferencia: { nombre: 'Transferencia', emoji: '🏦' },
 } as const;
+
+/** «Vender y entregar»: el carrito queda con el libro del encargo, su cliente y su adelanto. Devuelve un aviso si algo falta. */
+export function entregarEncargo(e: Encargo, libro: Libro): string | null {
+  vaciar();
+  if (libro.stock <= 0) return `«${libro.titulo}» no tiene stock: ingrésalo primero en «Libros»`;
+  const cantidad = Math.min(e.cantidad, libro.stock);
+  carrito.lineas.push({ libro, cantidad, descuento: null });
+  carrito.cliente = { id: e.clienteId, nombre: e.cliente, telefono: e.telefono, correo: '', tipoClienteId: null, notas: '' };
+  carrito.clienteNombre = e.cliente;
+  carrito.encargo = { id: e.id, adelantoCent: e.adelantoCent, titulo: e.titulo, cliente: e.cliente };
+  return cantidad < e.cantidad ? `Solo hay ${libro.stock} en stock; el encargo pedía ${e.cantidad}` : null;
+}

@@ -28,12 +28,14 @@
     onCerrar();
   }
 
-  const redondeo = $derived(redondeoEfectivo(calc.totalPrevioCent, pagos));
+  /** Adelanto del encargo que se entrega (ya está cobrado). */
+  const adelanto = $derived(carrito.encargo?.adelantoCent ?? 0);
+  const redondeo = $derived(redondeoEfectivo(calc.totalPrevioCent, adelanto, pagos));
   const total = $derived(calc.totalPrevioCent - redondeo);
-  const pagado = $derived(pagos.reduce((s, p) => s + p.montoCent, 0));
+  const pagado = $derived(pagos.reduce((s, p) => s + p.montoCent, 0) + adelanto);
   const falta = $derived(total - pagado);
   const vuelto = $derived(pagos.reduce((s, p) => s + (p.metodo === 'efectivo' ? (p.recibidoCent ?? p.montoCent) - p.montoCent : 0), 0));
-  const puedeConfirmar = $derived(pagos.length > 0 && falta === 0 && pagos.every((p) => p.metodo !== 'efectivo' || (p.recibidoCent ?? p.montoCent) >= p.montoCent));
+  const puedeConfirmar = $derived((pagos.length > 0 || adelanto > 0) && falta === 0 && pagos.every((p) => p.metodo !== 'efectivo' || (p.recibidoCent ?? p.montoCent) >= p.montoCent));
 
   /** Lo que se cobraría con este método: lo escrito o, si no se tocó, lo que falta (en efectivo, sin los céntimos sueltos). */
   function montoPara(m: Metodo): number {
@@ -70,6 +72,7 @@
         tipoClienteId: carrito.tipoId,
         clienteId: carrito.cliente?.id ?? null,
         clienteNombre: carrito.clienteNombre.trim() || null,
+        encargoId: carrito.encargo?.id ?? null,
         descuento: carrito.descuento,
         pagos: pagos.map((p) => ({ ...p })),
       });
@@ -93,8 +96,9 @@
     </header>
 
     <div class="total">
-      <span class="etiqueta">Total a cobrar</span>
-      <strong data-testid="total-cobrar">{soles(total)}</strong>
+      <span class="etiqueta">{adelanto ? 'Falta cobrar' : 'Total a cobrar'}</span>
+      <strong data-testid="total-cobrar">{soles(total - adelanto)}</strong>
+      {#if adelanto}<small>Total {soles(total)} · adelanto del encargo −{soles(adelanto)}</small>{/if}
       {#if redondeo}<small>Redondeo en efectivo a favor del cliente: −{soles(redondeo)}</small>{/if}
     </div>
 
@@ -181,8 +185,10 @@
       </div>
     {/if}
 
-    <div class="estado" class:ok={falta === 0 && pagos.length > 0}>
-      {#if !pagos.length}
+    <div class="estado" class:ok={falta === 0 && (pagos.length > 0 || adelanto > 0)}>
+      {#if !pagos.length && falta === 0}
+        El adelanto cubre todo ✓
+      {:else if !pagos.length}
         Elige cómo paga el cliente
       {:else if falta > 0}
         Faltan {soles(falta)}

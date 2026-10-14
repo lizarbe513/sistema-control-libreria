@@ -173,6 +173,8 @@ export interface VentaEntrada {
   /** Lo que dio el cliente; vacío: el de la ficha registrada o «Cliente». */
   clienteNombre?: string | null;
   descuento?: Descuento | null;
+  /** Entrega de un encargo: su adelanto se descuenta. */
+  encargoId?: number | null;
   pagos: PagoEntrada[];
 }
 export interface ItemVenta {
@@ -207,6 +209,8 @@ export interface Venta {
   anulada: boolean;
   anuladaFecha: string | null;
   motivoAnulacion: string;
+  encargoId: number | null;
+  adelantoCent: number;
   items: ItemVenta[];
   pagos: PagoVenta[];
 }
@@ -227,16 +231,70 @@ export interface ResumenVentas {
   anuladas: number;
   unidades: number;
   totalCent: number;
+  /** Caja real: pagos de ventas más adelantos (y devoluciones) de encargos del período. */
   porMetodo: { metodo: Metodo; montoCent: number }[];
+  adelantosCent: number;
 }
 export interface Cliente {
   id: number;
   nombre: string;
   telefono: string;
+  correo: string;
   tipoClienteId: number | null;
+  notas: string;
 }
 export interface ClienteEntrada {
+  id?: number | null;
   nombre: string;
   telefono?: string;
+  correo?: string;
   tipoClienteId?: number | null;
+  notas?: string;
+}
+export interface FichaCliente {
+  cliente: Cliente;
+  compras: { ventaId: number; fecha: string; totalCent: number; libros: string }[];
+  encargos: { id: number; titulo: string; estado: EstadoEncargo; creado: string }[];
+  totalCompradoCent: number;
+}
+
+// ── encargos ──
+export type EstadoEncargo = 'pendiente' | 'pedido' | 'llego' | 'avisado' | 'entregado' | 'cancelado';
+export interface Encargo {
+  id: number;
+  clienteId: number;
+  cliente: string;
+  telefono: string;
+  libroId: number | null;
+  titulo: string;
+  autor: string;
+  cantidad: number;
+  estado: EstadoEncargo;
+  notas: string;
+  creado: string;
+  actualizado: string;
+  fechaPedido: string | null;
+  fechaLlego: string | null;
+  fechaAviso: string | null;
+  fechaCierre: string | null;
+  ventaId: number | null;
+  /** Adelanto neto (adelantos menos devoluciones). */
+  adelantoCent: number;
+  precioCent: number | null;
+  stock: number | null;
+  portada: string | null;
+  colorTapa: string | null;
+  formato: Formato | null;
+  categoria: string | null;
+}
+export interface EncargoEntrada {
+  clienteId?: number | null;
+  /** Cliente nuevo, que se registra junto con el encargo. */
+  cliente?: ClienteEntrada | null;
+  libroId?: number | null;
+  titulo: string;
+  autor?: string;
+  cantidad?: number;
+  notas?: string;
+  adelanto?: { metodo: Metodo; montoCent: number } | null;
 }

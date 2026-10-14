@@ -3,6 +3,7 @@ import { api, type EstadoInicial, type Usuaria } from './api';
 import { aplicarPreferencias, app, avisar, olvidarPreferencias, registrarGuardadoPreferencias } from './estado.svelte';
 import { borrador, prepararInventario } from './inventario.svelte';
 import { carrito, prepararVentas, vaciar } from './ventas/carrito.svelte';
+import { encargosUI } from './encargos.svelte';
 import { tienda } from './tienda/tienda.svelte';
 
 export const sesion = $state({
@@ -69,6 +70,8 @@ export async function cerrarSesion() {
   borrador.datos = null;
   vaciar();
   carrito.tipos = [];
+  encargosUI.carta = null;
+  encargosUI.nuevo = null;
   sesion.usuaria = null;
   app.usuario = '';
   app.vista = 'inicio';

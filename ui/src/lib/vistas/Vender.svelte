@@ -52,8 +52,24 @@
 
   function sumar(l: Libro) {
     const aviso = agregar(l);
-    if (aviso) avisar(aviso);
+    if (aviso) return avisar(aviso);
+    void avisarApartado(l);
   }
+
+  /** Si el libro está apartado para el encargo de otro cliente y no sobra stock, se avisa (no se impide). */
+  async function avisarApartado(l: Libro) {
+    try {
+      const otros = (await api.encargosApartados(l.id)).filter((e) => e.id !== carrito.encargo?.id);
+      const apartados = otros.reduce((s, e) => s + e.cantidad, 0);
+      const enCarrito = carrito.lineas.find((x) => x.libro.id === l.id)?.cantidad ?? 0;
+      if (otros.length && l.stock - enCarrito < apartados)
+        avisar(`Ojo: «${l.titulo}» está apartado para el encargo de ${otros.map((e) => e.cliente).join(', ')} 📦`);
+    } catch {
+      /* solo es un aviso */
+    }
+  }
+
+  const adelanto = $derived(carrito.encargo?.adelantoCent ?? 0);
 
   /** Enter: agrega el primer resultado con stock (sirve para un ISBN o un código escrito o escaneado). */
   async function enter() {
@@ -205,6 +221,12 @@
       <aside class="carrito vidrio" aria-label="Carrito de la venta">
         <h2>🛍️ Venta en curso</h2>
         <BolsaVenta libros={carrito.lineas.map((l) => ({ color: l.libro.tapa, cantidad: l.cantidad }))} />
+        {#if carrito.encargo}
+          <div class="entrega" data-testid="entrega-encargo">
+            <span>📦 Entrega del encargo de <strong>{carrito.encargo.cliente}</strong>{#if adelanto} · adelanto −{soles(adelanto)}{/if}</span>
+            <button class="enlace" onclick={() => (carrito.encargo = null)} title="Vender sin entregar el encargo">Quitar</button>
+          </div>
+        {/if}
 
         {#if !carrito.lineas.length}
           <div class="vacio-carrito">
@@ -290,12 +312,15 @@
             {#if calc.descuentoCent}
               <div class="desc"><dt>Descuentos {#if tipoActual()?.descuentoPct}<small>({tipoActual()?.nombre} −{tipoActual()?.descuentoPct} %)</small>{/if}</dt><dd>−{soles(calc.descuentoCent)}</dd></div>
             {/if}
-            <div class="total"><dt>Total</dt><dd data-testid="total">{soles(calc.totalPrevioCent)}</dd></div>
+            {#if adelanto}
+              <div class="desc"><dt>Adelanto del encargo</dt><dd>−{soles(adelanto)}</dd></div>
+            {/if}
+            <div class="total"><dt>{adelanto ? 'Falta cobrar' : 'Total'}</dt><dd data-testid="total">{soles(calc.totalPrevioCent - adelanto)}</dd></div>
           </dl>
 
           <div class="acciones">
             <button class="enlace" onclick={vaciar}>Vaciar</button>
-            <button class="btn btn-primario grande" disabled={excede || calc.totalPrevioCent <= 0} onclick={() => (cobrando = true)}>Cobrar {soles(calc.totalPrevioCent)}</button>
+            <button class="btn btn-primario grande" disabled={excede || calc.totalPrevioCent <= 0} onclick={() => (cobrando = true)}>{calc.totalPrevioCent - adelanto > 0 ? `Cobrar ${soles(calc.totalPrevioCent - adelanto)}` : 'Entregar'}</button>
           </div>
         {/if}
       </aside>
@@ -310,6 +335,7 @@
             {#each resumen.porMetodo as m (m.metodo)}
               <span class="chip"><IconoMetodo metodo={m.metodo} tam={18} /> {soles(m.montoCent)}</span>
             {/each}
+            {#if resumen.adelantosCent}<span class="chip" title="Adelantos de encargos recibidos ese día (menos devoluciones)">📦 incluye adelantos {soles(resumen.adelantosCent)}</span>{/if}
             {#if resumen.anuladas}<span class="chip anul">{resumen.anuladas} anulada{resumen.anuladas === 1 ? '' : 's'}</span>{/if}
           </div>
         {/if}
@@ -904,6 +930,17 @@
     font-family: ui-monospace, 'DejaVu Sans Mono', monospace;
   }
   .ticket .quien small {
+    font-weight: 600;
+  }
+  .entrega {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--yellow) 60%, var(--surface));
+    font-size: 13px;
     font-weight: 600;
   }
   .nombre-cliente {

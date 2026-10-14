@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icono from '../componentes/Icono.svelte';
-  import { api, type ResumenInventario, type ResumenVentas } from '../api';
+  import { api, type Encargo, type ResumenInventario, type ResumenVentas } from '../api';
+  import { encargosUI, ESTADOS, hace } from '../encargos.svelte';
   import { soles } from '../datos';
   import { hoyLocal, rangoDia, ventasCambio } from '../ventas/carrito.svelte';
   import type { Libro } from '../datos';
@@ -18,6 +19,16 @@
     void inventario.version;
     api.resumenInventario().then((r) => (resumen = r)).catch((e: Error) => avisar(e.message));
   });
+
+  let encargos = $state<Encargo[]>([]);
+  $effect(() => {
+    void encargosUI.version;
+    void inventario.version;
+    api.encargos(true).then((l) => (encargos = l)).catch(() => {});
+  });
+  const porAvisar = $derived(encargos.filter((e) => e.estado === 'llego'));
+  // primero los que llegaron (hay que avisar), luego los más antiguos
+  const destacados = $derived([...porAvisar, ...encargos.filter((e) => e.estado !== 'llego')].slice(0, 4));
 
   let hoy = $state<ResumenVentas | null>(null);
   $effect(() => {
@@ -113,10 +124,26 @@
         <h2 class="titulo-seccion">Encargos pendientes</h2>
         <button class="enlace" onclick={() => (app.vista = 'encargos')}>Ver todos</button>
       </div>
-      <div class="vacio-bloque">
-        <Icono nombre="encargos" tam={26} />
-        <p>Aún no hay encargos. Cuando un libro no esté, usa <b>«¿Lo encargamos?»</b> en la búsqueda.</p>
-      </div>
+      {#if !encargos.length}
+        <div class="vacio-bloque">
+          <Icono nombre="encargos" tam={26} />
+          <p>Aún no hay encargos. Cuando un libro no esté, usa <b>«¿Lo encargamos?»</b> en la búsqueda.</p>
+        </div>
+      {:else}
+        {#if porAvisar.length}
+          <p class="aviso-llego" data-testid="por-avisar">📬 {porAvisar.length === 1 ? 'Llegó 1 encargo' : `Llegaron ${porAvisar.length} encargos`}: ¡falta avisar al cliente!</p>
+        {/if}
+        {#each destacados as e (e.id)}
+          <button class="fila libro-fila tarjeta" onclick={() => (app.vista = 'encargos')}>
+            <span class="lomo" style:background={e.colorTapa ?? '#d9c7d0'}></span>
+            <div class="fila-texto">
+              <strong>{e.titulo}</strong>
+              <span>{e.cliente} · {hace(e.creado)}</span>
+            </div>
+            <span class="cuantos" style:background={ESTADOS[e.estado].color}>{ESTADOS[e.estado].emoji} {ESTADOS[e.estado].nombre}</span>
+          </button>
+        {/each}
+      {/if}
     </section>
 
     <section class="bloque">
@@ -154,6 +181,14 @@
 </div>
 
 <style>
+  .aviso-llego {
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: color-mix(in srgb, #5dbb8a 25%, var(--surface));
+    font-weight: 800;
+    font-size: 13px;
+  }
   .vacio-bloque {
     display: flex;
     align-items: center;
