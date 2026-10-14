@@ -57,8 +57,21 @@
     if (movil) app.fichaMovil = true;
   }
 
+  /** Enter abre el mejor resultado de lo que está escrito *ahora*, no de la búsqueda anterior que aún se ve. */
+  async function abrirPrimero() {
+    const q = app.consulta;
+    try {
+      const r = await api.buscarLibros(q, { categoria });
+      if (q !== app.consulta) return; // siguió escribiendo
+      resultados = r.map(vista);
+      if (resultados.length) elegir(resultados[0]);
+    } catch (e) {
+      avisar((e as Error).message);
+    }
+  }
+
   function tecla(e: KeyboardEvent) {
-    if (e.key === 'Enter' && resultados.length) elegir(resultados[0]);
+    if (e.key === 'Enter') abrirPrimero();
     if (e.key === 'Escape') app.consulta = '';
   }
 

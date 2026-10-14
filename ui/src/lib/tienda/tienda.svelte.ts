@@ -301,6 +301,21 @@ class Almacen {
     this.aplicar({ ...this.datos, estantes: this.datos.estantes.map((s) => (s.id === id ? { ...s, ...d, inicioTramo } : s)) });
   }
 
+  /** Exactamente `n` tramos, lo más parejos posible (1 = repisas corridas, sin divisiones verticales). */
+  tramosEn(id: string, n: number) {
+    const e = this.datos.estantes.find((s) => s.id === id);
+    if (!e) return;
+    const cols = columnas(this.datos, id);
+    if (!cols.length) return;
+    const d = materializar(this.datos, e);
+    const total = Math.max(1, Math.min(cols.length, Math.round(n)));
+    // la columna donde empieza el tramo i es round(i · columnas / n); los inicios nunca se repiten
+    const inicios = new Set<number>();
+    for (let i = 0; i < total; i++) inicios.add(Math.round((i * cols.length) / total));
+    const inicioTramo = [...inicios].map((i) => `${cols[i].x},${cols[i].z}`);
+    this.aplicar({ ...this.datos, estantes: this.datos.estantes.map((s) => (s.id === id ? { ...s, ...d, inicioTramo } : s)) });
+  }
+
   /** Una repisa cada `n` filas, contando desde la base (los tramos no cambian). */
   repisasCada(id: string, n: number) {
     const e = this.datos.estantes.find((s) => s.id === id);

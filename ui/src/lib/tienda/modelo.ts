@@ -287,12 +287,14 @@ export function resolver(t: Tienda, u: UbicacionLibro): UbicacionResuelta | null
   const info = t.estantes.find((e) => e.id === u.estante);
   if (!info) return null;
   const tramos = compartimentos(t, u.estante);
-  const tr = tramos.length === 1 && tramos[0].repisas.length === 1 ? tramos[0] : tramos[u.tramo - 1];
+  // sin divisiones verticales (un solo tramo) toda la repisa es el «tramo 1», se hubiera guardado el número que fuera
+  const unico = tramos.length === 1;
+  const tr = unico ? tramos[0] : tramos[u.tramo - 1];
   if (!tr) return null;
   const repisa = tr.repisas.length === 1 ? 1 : u.repisa;
   const bloques = tr.repisas[repisa - 1];
   if (!bloques?.length) return null;
-  return { ...u, repisa, tramos: tramos.length, repisas: tr.repisas.length, bloques, bloque: representante(bloques), info, tipo: bloques[0].tipo };
+  return { ...u, tramo: unico ? 1 : u.tramo, repisa, tramos: tramos.length, repisas: tr.repisas.length, bloques, bloque: representante(bloques), info, tipo: bloques[0].tipo };
 }
 
 /** Ubicación del compartimento que contiene un bloque (para el editor al pasar el mouse). */

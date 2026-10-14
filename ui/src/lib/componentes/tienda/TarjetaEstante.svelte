@@ -2,6 +2,7 @@
   import { fly } from 'svelte/transition';
   import { PALETA, compartimentos, infoTipo, letraDe, tipoDeEstante, type Estante } from '../../tienda/modelo';
   import { tienda } from '../../tienda/tienda.svelte';
+  import ControlTramos from './ControlTramos.svelte';
 
   let {
     estante,
@@ -69,6 +70,9 @@
   </div>
 
   <p class="resumen">{resumen}</p>
+  {#if typeof terminos === 'object'}
+    <ControlTramos id={estante.id} compacto />
+  {/if}
   <div class="acciones">
     {#if typeof terminos === 'object'}
       <button class="btn btn-primario organizar" onclick={onOrganizar}>🗂️ Organizar {terminos[0].toLowerCase()}s y {terminos[1].toLowerCase()}s (O)</button>

@@ -11,6 +11,7 @@
     type Estante,
   } from '../../tienda/modelo';
   import { tienda } from '../../tienda/tienda.svelte';
+  import ControlTramos from './ControlTramos.svelte';
 
   let {
     estante,
@@ -204,6 +205,10 @@
       </svg>
     </div>
 
+    <div class="grupo">
+      <ControlTramos id={estante.id} />
+    </div>
+    <p class="ayuda">Las divisiones verticales separan cada repisa en tramos. Con «Sin divisiones» las repisas corren de lado a lado.</p>
     <div class="grupo">
       <span>{nombres[0]}s de</span>
       {#each [1, 2, 3, 4] as n}
