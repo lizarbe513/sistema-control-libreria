@@ -6,6 +6,7 @@
   import Buscar from '../vistas/Buscar.svelte';
   import Inicio from '../vistas/Inicio.svelte';
   import Pendiente from '../vistas/Pendiente.svelte';
+  import Vender from '../vistas/Vender.svelte';
   import Icono, { type NombreIcono } from './Icono.svelte';
   import PanelLibro from './PanelLibro.svelte';
   import Radio from './Radio.svelte';
@@ -37,6 +38,8 @@
       <Inicio movil />
     {:else if app.vista === 'buscar'}
       <Buscar movil />
+    {:else if app.vista === 'vender'}
+      <Vender movil />
     {:else if app.vista === 'ajustes'}
       <Ajustes />
     {:else}

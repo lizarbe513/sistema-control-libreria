@@ -3,9 +3,10 @@
   import { app, avisar } from '../estado.svelte';
   import { inventario } from '../inventario.svelte';
   import { esDuena } from '../sesion.svelte';
+  import { agregar } from '../ventas/carrito.svelte';
 
   const puedeEditar = $derived(esDuena() || inventario.vendedoresEditan);
-  const PRONTO = 'Las ventas y los encargos llegan en la próxima etapa del programa 🌱';
+  const PRONTO = 'Los encargos llegan en la próxima etapa del programa 🌱';
   import Icono from './Icono.svelte';
   import Libro3D from './Libro3D.svelte';
   import Ubicacion from './Ubicacion.svelte';
@@ -48,7 +49,15 @@
 
       <div class="acciones">
         {#if libro.stock > 0}
-          <button class="btn btn-primario" onclick={() => avisar(PRONTO)}>
+          <button
+            class="btn btn-primario"
+            onclick={() => {
+              const aviso = agregar(libro);
+              if (aviso) return avisar(aviso);
+              app.fichaMovil = false;
+              app.vista = 'vender';
+            }}
+          >
             <Icono nombre="carrito" tam={18} /> Vender
           </button>
         {:else}

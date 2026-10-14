@@ -1,6 +1,8 @@
 <script lang="ts">
   import Icono from '../componentes/Icono.svelte';
-  import { api, type ResumenInventario } from '../api';
+  import { api, type ResumenInventario, type ResumenVentas } from '../api';
+  import { soles } from '../datos';
+  import { hoyLocal, rangoDia, ventasCambio } from '../ventas/carrito.svelte';
   import type { Libro } from '../datos';
   import { app, avisar, saludo } from '../estado.svelte';
   import { inventario, vista } from '../inventario.svelte';
@@ -15,6 +17,13 @@
   $effect(() => {
     void inventario.version;
     api.resumenInventario().then((r) => (resumen = r)).catch((e: Error) => avisar(e.message));
+  });
+
+  let hoy = $state<ResumenVentas | null>(null);
+  $effect(() => {
+    void ventasCambio.version;
+    const [d, h] = rangoDia(hoyLocal());
+    api.resumenVentas(d, h).then((r) => (hoy = r)).catch(() => {});
   });
 
   function abrirLibro(l: Libro) {
@@ -82,7 +91,12 @@
           <strong class="monto">{k ? k.libros : '…'} <small>{k?.libros === 1 ? 'libro' : 'libros'}</small></strong>
           <p>
             {#if k && k.libros}
-              {k.unidades} ejemplares en la tienda{#if k.sinUbicacion} · {k.sinUbicacion} sin ubicación{/if}.<br />Las ventas del día aparecerán aquí 💕
+              {k.unidades} ejemplares en la tienda{#if k.sinUbicacion} · {k.sinUbicacion} sin ubicación{/if}.<br />
+              {#if hoy?.ventas}
+                <b data-testid="ventas-hoy">Hoy: {soles(hoy.totalCent)} · {hoy.ventas} {hoy.ventas === 1 ? 'venta' : 'ventas'}</b> 💕
+              {:else}
+                Todavía no hay ventas hoy… ¡ya llegarán! ☕
+              {/if}
             {:else}
               Aún no hay libros cargados.<br />¡Empecemos por el primero! 💕
             {/if}

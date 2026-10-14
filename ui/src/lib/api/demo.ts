@@ -3,10 +3,15 @@
 // es solo para ver y probar la interfaz.
 import { LIBROS_DEMO } from '../datos';
 import { buscarEn } from '../busqueda';
+import { calcular, montoDescuento, redondeoEfectivo } from '../ventas/calculo';
 import type { Tienda } from '../tienda/modelo';
 import type { Api } from './contrato';
 import type {
   CategoriaApi,
+  Cliente,
+  ClienteEntrada,
+  Descuento,
+  Metodo,
   DatosConfiguracion,
   EstadoInicial,
   Filtros,
@@ -16,9 +21,14 @@ import type {
   PlantillasApi,
   ResultadoLinea,
   ResumenInventario,
+  ResumenVentas,
   Rol,
   Sugerencia,
+  TipoCliente,
+  TipoEntrada,
   Usuaria,
+  Venta,
+  VentaEntrada,
 } from './tipos';
 
 const CATEGORIAS_DEMO: CategoriaApi[] = [
@@ -101,6 +111,10 @@ interface Datos {
   plantillas?: PlantillaApi[];
   defecto?: string | null;
   vendedoresEditan?: boolean;
+  ventas?: Venta[];
+  tipos?: TipoCliente[];
+  tope?: number;
+  clientes?: Cliente[];
 }
 
 const CLAVE = 'demo-libreria';
@@ -536,5 +550,181 @@ export class ApiDemo implements Api {
     this.exigirDuena('cambiar la plantilla por defecto');
     this.d.defecto = id;
     this.persistir();
+  }
+
+  // ── ventas ──
+  private get tipos() {
+    return (this.d.tipos ??= [
+      { id: 1, nombre: 'Público', descuentoPct: 0, activo: true },
+      { id: 2, nombre: 'Profesor', descuentoPct: 15, activo: true },
+      { id: 3, nombre: 'Mayorista', descuentoPct: 25, activo: true },
+    ]);
+  }
+
+  async registrarVenta(e: VentaEntrada) {
+    const yo = this.exigirSesion();
+    if (!e.items.length) throw new Error('Agrega al menos un libro a la venta');
+    if (e.items.some((i) => i.cantidad <= 0)) throw new Error('La cantidad debe ser al menos 1');
+    const tipo = this.tipos.find((t) => t.id === e.tipoClienteId && t.activo);
+    if (!tipo) throw new Error('No se encontró ese tipo de cliente');
+    const libros = e.items.map((i) => {
+      const l = this.libros.find((x) => x.id === i.libroId);
+      if (!l) throw new Error('No se encontró uno de los libros');
+      return l;
+    });
+    const lineas = e.items.map((i, k) => ({ precioCent: libros[k].precioCent, cantidad: i.cantidad, descuento: i.descuento }));
+    const calc = calcular(lineas, tipo.descuentoPct, e.descuento);
+    if (yo.rol !== 'duena') {
+      const tope = this.d.tope ?? 10;
+      const pasa = (base: number, d?: Descuento | null) => montoDescuento(base, d) * 100 > base * tope;
+      const base = calc.lineas.reduce((s, l) => s + l.totalCent, 0);
+      if (lineas.some((l) => pasa(l.precioCent * l.cantidad, l.descuento)) || pasa(base, e.descuento))
+        throw new Error(`Los descuentos a mano llegan hasta ${tope} % sin la Dueña`);
+    }
+    if (!e.pagos.length) throw new Error('Agrega al menos un pago');
+    if (e.pagos.some((p) => p.montoCent <= 0)) throw new Error('Cada pago debe ser de más de S/ 0.00');
+    const redondeo = redondeoEfectivo(calc.totalPrevioCent, e.pagos);
+    const total = calc.totalPrevioCent - redondeo;
+    const pagado = e.pagos.reduce((s, p) => s + p.montoCent, 0);
+    const soles = (c: number) => `S/ ${(c / 100).toFixed(2)}`;
+    if (pagado < total) throw new Error(`Faltan ${soles(total - pagado)} por cobrar`);
+    if (pagado > total) throw new Error(`Los pagos suman ${soles(pagado - total)} más que el total`);
+    if (e.pagos.some((p) => p.recibidoCent != null && (p.metodo !== 'efectivo' || p.recibidoCent < p.montoCent)))
+      throw new Error('Lo recibido en efectivo no puede ser menos que el monto del pago');
+    // el stock se valida antes de tocar nada (en Rust, la transacción se deshace)
+    e.items.forEach((i, k) => {
+      if (libros[k].stock < i.cantidad) throw new Error(`Solo hay ${libros[k].stock} de «${libros[k].titulo}» en stock: no puede quedar negativo`);
+    });
+    e.items.forEach((i, k) => (libros[k].stock -= i.cantidad));
+    const ventas = (this.d.ventas ??= []);
+    const cliente = e.clienteId ? (this.d.clientes ?? []).find((c) => c.id === e.clienteId) : undefined;
+    const venta: Venta = {
+      id: Math.max(0, ...ventas.map((v) => v.id)) + 1,
+      fecha: new Date().toISOString(),
+      usuarioId: yo.id,
+      vendedora: yo.nombre,
+      clienteId: cliente?.id ?? null,
+      cliente: cliente?.nombre ?? null,
+      tipoNombre: tipo.nombre,
+      tipoPct: tipo.descuentoPct,
+      subtotalCent: calc.subtotalCent,
+      descuentoCent: calc.descuentoCent,
+      redondeoCent: redondeo,
+      totalCent: total,
+      anulada: false,
+      anuladaFecha: null,
+      motivoAnulacion: '',
+      items: e.items.map((i, k) => ({
+        libroId: i.libroId,
+        titulo: libros[k].titulo,
+        cantidad: i.cantidad,
+        precioUnitCent: libros[k].precioCent,
+        descuentoCent: calc.lineas[k].descuentoCent,
+        totalCent: calc.lineas[k].totalCent,
+      })),
+      pagos: e.pagos.map((p) =>
+        p.metodo === 'efectivo'
+          ? { metodo: p.metodo, montoCent: p.montoCent, recibidoCent: p.recibidoCent ?? p.montoCent, vueltoCent: (p.recibidoCent ?? p.montoCent) - p.montoCent }
+          : { metodo: p.metodo, montoCent: p.montoCent, recibidoCent: null, vueltoCent: null },
+      ),
+    };
+    ventas.push(venta);
+    this.persistir();
+    return structuredClone(venta);
+  }
+
+  async anularVenta(id: number, motivo: string) {
+    this.exigirDuena('anular ventas');
+    if (!motivo.trim()) throw new Error('Escribe el motivo de la anulación');
+    const v = (this.d.ventas ?? []).find((x) => x.id === id);
+    if (!v) throw new Error('No se encontró esa venta');
+    if (v.anulada) throw new Error('Esta venta ya estaba anulada');
+    v.anulada = true;
+    v.anuladaFecha = new Date().toISOString();
+    v.motivoAnulacion = motivo.trim();
+    for (const i of v.items) {
+      const l = (this.d.libros ?? []).find((x) => x.id === i.libroId);
+      if (l) l.stock += i.cantidad;
+    }
+    this.persistir();
+    return structuredClone(v);
+  }
+
+  async ventas(desde: string, hasta: string) {
+    this.exigirSesion();
+    return (this.d.ventas ?? [])
+      .filter((v) => v.fecha >= desde && v.fecha < hasta)
+      .sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : b.id - a.id))
+      .map((v) => structuredClone(v));
+  }
+
+  async resumenVentas(desde: string, hasta: string): Promise<ResumenVentas> {
+    this.exigirSesion();
+    const del = (this.d.ventas ?? []).filter((v) => v.fecha >= desde && v.fecha < hasta);
+    const ok = del.filter((v) => !v.anulada);
+    const por = new Map<Metodo, number>();
+    for (const p of ok.flatMap((v) => v.pagos)) por.set(p.metodo, (por.get(p.metodo) ?? 0) + p.montoCent);
+    return {
+      ventas: ok.length,
+      anuladas: del.length - ok.length,
+      unidades: ok.reduce((s, v) => s + v.items.reduce((n, i) => n + i.cantidad, 0), 0),
+      totalCent: ok.reduce((s, v) => s + v.totalCent, 0),
+      porMetodo: [...por].sort(([a], [b]) => a.localeCompare(b)).map(([metodo, montoCent]) => ({ metodo, montoCent })),
+    };
+  }
+
+  async tiposCliente(todos = false) {
+    this.exigirSesion();
+    return this.tipos.filter((t) => todos || t.activo).map((t) => ({ ...t }));
+  }
+
+  async guardarTipoCliente(e: TipoEntrada) {
+    this.exigirDuena('cambiar los tipos de cliente');
+    const nombre = e.nombre.trim();
+    if (!nombre) throw new Error('Escribe el nombre del tipo de cliente');
+    if (e.descuentoPct < 0 || e.descuentoPct > 100) throw new Error('El descuento debe estar entre 0 % y 100 %');
+    const tipos = this.tipos;
+    const antes = structuredClone(tipos);
+    if (e.id) {
+      const t = tipos.find((x) => x.id === e.id);
+      if (!t) throw new Error('No se encontró ese tipo de cliente');
+      Object.assign(t, { nombre, descuentoPct: e.descuentoPct, activo: e.activo });
+    } else tipos.push({ id: Math.max(0, ...tipos.map((t) => t.id)) + 1, nombre, descuentoPct: e.descuentoPct, activo: e.activo });
+    if (!tipos.some((t) => t.activo)) {
+      this.d.tipos = antes;
+      throw new Error('Debe quedar al menos un tipo de cliente activo');
+    }
+    this.persistir();
+    return this.tipos.map((t) => ({ ...t }));
+  }
+
+  async topeDescuento(valor?: number) {
+    this.exigirSesion();
+    if (valor !== undefined) {
+      this.exigirDuena('cambiar el tope de descuento');
+      if (valor < 0 || valor > 100) throw new Error('El tope debe estar entre 0 % y 100 %');
+      this.d.tope = valor;
+      this.persistir();
+    }
+    return this.d.tope ?? 10;
+  }
+
+  async buscarClientes(texto: string) {
+    this.exigirSesion();
+    const q = texto.trim().toLowerCase();
+    return (this.d.clientes ?? [])
+      .filter((c) => c.nombre.toLowerCase().includes(q) || c.telefono.includes(q))
+      .slice(-20)
+      .reverse();
+  }
+
+  async crearCliente(e: ClienteEntrada) {
+    this.exigirSesion();
+    if (!e.nombre.trim()) throw new Error('Escribe el nombre del cliente');
+    const cs = (this.d.clientes ??= []);
+    const c: Cliente = { id: Math.max(0, ...cs.map((x) => x.id)) + 1, nombre: e.nombre.trim(), telefono: (e.telefono ?? '').trim(), tipoClienteId: e.tipoClienteId ?? null };
+    cs.push(c);
+    this.persistir();
+    return { ...c };
   }
 }

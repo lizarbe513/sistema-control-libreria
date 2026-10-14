@@ -4,6 +4,8 @@ import type { Api } from './contrato';
 import type { Tienda } from '../tienda/modelo';
 import type {
   CategoriaApi,
+  Cliente,
+  ClienteEntrada,
   DatosConfiguracion,
   EstadoInicial,
   Filtros,
@@ -13,9 +15,14 @@ import type {
   PlantillasApi,
   ResultadoLinea,
   ResumenInventario,
+  ResumenVentas,
   Rol,
   Sugerencia,
+  TipoCliente,
+  TipoEntrada,
   Usuaria,
+  Venta,
+  VentaEntrada,
 } from './tipos';
 
 /** Backend real: comandos de Rust por IPC. Los errores llegan como texto en español. */
@@ -139,5 +146,34 @@ export class ApiTauri implements Api {
   }
   fijarPlantillaDefecto(id: string | null) {
     return this.llamar<void>('plantilla_defecto', { id });
+  }
+
+  // ── ventas ──
+  registrarVenta(entrada: VentaEntrada) {
+    return this.llamar<Venta>('venta_registrar', { entrada });
+  }
+  anularVenta(id: number, motivo: string) {
+    return this.llamar<Venta>('venta_anular', { id, motivo });
+  }
+  ventas(desde: string, hasta: string) {
+    return this.llamar<Venta[]>('ventas_listar', { desde, hasta });
+  }
+  resumenVentas(desde: string, hasta: string) {
+    return this.llamar<ResumenVentas>('ventas_resumen', { desde, hasta });
+  }
+  tiposCliente(todos?: boolean) {
+    return this.llamar<TipoCliente[]>('tipos_cliente_listar', { todos: todos ?? false });
+  }
+  guardarTipoCliente(entrada: TipoEntrada) {
+    return this.llamar<TipoCliente[]>('tipo_cliente_guardar', { entrada });
+  }
+  topeDescuento(valor?: number) {
+    return valor === undefined ? this.llamar<number>('tope_descuento') : this.llamar<number>('tope_descuento_fijar', { pct: valor });
+  }
+  buscarClientes(texto: string) {
+    return this.llamar<Cliente[]>('clientes_buscar', { texto });
+  }
+  crearCliente(entrada: ClienteEntrada) {
+    return this.llamar<Cliente>('cliente_crear_rapido', { entrada });
   }
 }

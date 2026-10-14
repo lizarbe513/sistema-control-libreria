@@ -1,6 +1,8 @@
 import type { Tienda } from '../tienda/modelo';
 import type {
   CategoriaApi,
+  Cliente,
+  ClienteEntrada,
   DatosConfiguracion,
   EstadoInicial,
   Filtros,
@@ -10,9 +12,14 @@ import type {
   PlantillasApi,
   ResultadoLinea,
   ResumenInventario,
+  ResumenVentas,
   Rol,
   Sugerencia,
+  TipoCliente,
+  TipoEntrada,
   Usuaria,
+  Venta,
+  VentaEntrada,
 } from './tipos';
 
 /** Lo que la interfaz puede pedirle al backend. Dos implementaciones: Tauri (real) y Demo (navegador). */
@@ -59,4 +66,19 @@ export interface Api {
   guardarPlantilla(nombre: string, t: Tienda): Promise<PlantillaApi>;
   borrarPlantilla(id: string): Promise<void>;
   fijarPlantillaDefecto(id: string | null): Promise<void>;
+
+  // ── ventas ──
+  /** El backend recalcula todo: precios, descuentos, redondeo y total. */
+  registrarVenta(e: VentaEntrada): Promise<Venta>;
+  /** Solo la Dueña. */
+  anularVenta(id: number, motivo: string): Promise<Venta>;
+  /** Ventas con fecha en [desde, hasta): instantes ISO en UTC (la interfaz convierte el día local). */
+  ventas(desde: string, hasta: string): Promise<Venta[]>;
+  resumenVentas(desde: string, hasta: string): Promise<ResumenVentas>;
+  tiposCliente(todos?: boolean): Promise<TipoCliente[]>;
+  guardarTipoCliente(e: TipoEntrada): Promise<TipoCliente[]>;
+  /** Tope (%) de descuento a mano para vendedoras. Con `valor` lo cambia (solo la Dueña). */
+  topeDescuento(valor?: number): Promise<number>;
+  buscarClientes(texto: string): Promise<Cliente[]>;
+  crearCliente(e: ClienteEntrada): Promise<Cliente>;
 }

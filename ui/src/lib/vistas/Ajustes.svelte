@@ -3,6 +3,7 @@
   import { app, avisar, guardar, type AnimLibro } from '../estado.svelte';
   import { api } from '../api';
   import { cerrarSesion, esDuena, sesion } from '../sesion.svelte';
+  import TiposCliente from '../componentes/TiposCliente.svelte';
   import Usuarias from '../componentes/Usuarias.svelte';
   import { inventario } from '../inventario.svelte';
 
@@ -88,6 +89,11 @@
         <input type="checkbox" checked={inventario.vendedoresEditan} onchange={(e) => cambiarPermiso(e.currentTarget.checked)} />
         <span class="pastilla" aria-hidden="true"></span>
       </label>
+    </section>
+
+    <section class="vidrio bloque">
+      <h2 class="titulo-seccion">Tipos de cliente y descuentos</h2>
+      <TiposCliente />
     </section>
   {/if}
 

@@ -149,3 +149,91 @@ export interface PlantillasApi {
   /** null = la incluida «SIGLO XXI (croquis)». */
   defecto: string | null;
 }
+
+// ── ventas ──
+export type Descuento = { tipo: 'pct' | 'monto'; valor: number };
+export type Metodo = 'efectivo' | 'tarjeta' | 'yape_plin' | 'transferencia';
+
+export interface ItemEntrada {
+  libroId: number;
+  cantidad: number;
+  descuento?: Descuento | null;
+}
+export interface PagoEntrada {
+  metodo: Metodo;
+  /** Lo que aporta al total (en efectivo, sin contar el vuelto). */
+  montoCent: number;
+  /** Solo efectivo: lo que entregó el cliente. */
+  recibidoCent?: number | null;
+}
+export interface VentaEntrada {
+  items: ItemEntrada[];
+  tipoClienteId: number;
+  clienteId?: number | null;
+  descuento?: Descuento | null;
+  pagos: PagoEntrada[];
+}
+export interface ItemVenta {
+  libroId: number;
+  titulo: string;
+  cantidad: number;
+  precioUnitCent: number;
+  descuentoCent: number;
+  totalCent: number;
+}
+export interface PagoVenta {
+  metodo: Metodo;
+  montoCent: number;
+  recibidoCent: number | null;
+  vueltoCent: number | null;
+}
+export interface Venta {
+  id: number;
+  /** Instante ISO en UTC. */
+  fecha: string;
+  usuarioId: number;
+  vendedora: string;
+  clienteId: number | null;
+  cliente: string | null;
+  tipoNombre: string;
+  tipoPct: number;
+  subtotalCent: number;
+  descuentoCent: number;
+  redondeoCent: number;
+  totalCent: number;
+  anulada: boolean;
+  anuladaFecha: string | null;
+  motivoAnulacion: string;
+  items: ItemVenta[];
+  pagos: PagoVenta[];
+}
+export interface TipoCliente {
+  id: number;
+  nombre: string;
+  descuentoPct: number;
+  activo: boolean;
+}
+export interface TipoEntrada {
+  id?: number | null;
+  nombre: string;
+  descuentoPct: number;
+  activo: boolean;
+}
+export interface ResumenVentas {
+  ventas: number;
+  anuladas: number;
+  unidades: number;
+  totalCent: number;
+  porMetodo: { metodo: Metodo; montoCent: number }[];
+}
+export interface Cliente {
+  id: number;
+  nombre: string;
+  telefono: string;
+  tipoClienteId: number | null;
+}
+export interface ClienteEntrada {
+  nombre: string;
+  telefono?: string;
+  tipoClienteId?: number | null;
+}
