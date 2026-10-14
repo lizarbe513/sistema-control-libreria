@@ -98,6 +98,33 @@ pub fn abrir_con_contrasena(carpeta: &Path, contrasena: &str) -> Result<(Libreri
     Ok((lib, llave))
 }
 
+fn sal_de(meta: &Meta) -> Result<Vec<u8>> {
+    hex::decode(&meta.sal).map_err(|_| Error::Validacion("Los metadatos de la carpeta están dañados".into()))
+}
+
+/// Comprueba la contraseña maestra abriendo la base con una segunda conexión (sin tocar la actual).
+pub fn verificar_contrasena(lib: &Libreria, contrasena: &str) -> Result<Llave> {
+    let llave = Llave::derivar(contrasena, &sal_de(&lib.meta)?)?;
+    db::abrir(&lib.carpeta.join(ARCHIVO_DB), &llave)?;
+    Ok(llave)
+}
+
+/// Cambia la contraseña maestra: re-cifra la base con la llave nueva. La sal se conserva: así `libreria.json`
+/// nunca queda desfasado de la base si algo se corta a la mitad. Devuelve la llave nueva (para el llavero).
+pub fn cambiar_contrasena(lib: &Libreria, actual: &str, nueva: &str) -> Result<Llave> {
+    if nueva.chars().count() < 8 {
+        return invalido("La contraseña nueva debe tener al menos 8 caracteres");
+    }
+    verificar_contrasena(lib, actual)?;
+    let llave = Llave::derivar(nueva, &sal_de(&lib.meta)?)?;
+    // el cambio de llave se hace sin WAL y con todo lo pendiente ya en el archivo principal
+    lib.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;")?;
+    let r = lib.conn.execute_batch(&llave.pragma_rekey());
+    lib.conn.execute_batch("PRAGMA journal_mode = WAL;")?;
+    r?;
+    Ok(llave)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,6 +151,27 @@ mod tests {
         lib.consolidar().unwrap();
         let wal = c.join(format!("{ARCHIVO_DB}-wal"));
         assert!(!wal.exists() || std::fs::metadata(&wal).unwrap().len() == 0);
+    }
+
+    #[test]
+    fn cambiar_la_contrasena_maestra() {
+        let dir = tempfile::tempdir().unwrap();
+        let c = dir.path().join("L");
+        let (lib, vieja) = crear(&c, "contraseña vieja", "SIGLO XXI").unwrap();
+        lib.conn.execute("INSERT INTO config (clave, valor) VALUES ('x', 'y')", []).unwrap();
+        assert!(matches!(cambiar_contrasena(&lib, "no es esa", "contraseña nueva"), Err(Error::LlaveIncorrecta)));
+        assert!(cambiar_contrasena(&lib, "contraseña vieja", "corta").is_err());
+        let nueva = cambiar_contrasena(&lib, "contraseña vieja", "contraseña nueva").unwrap();
+        // la conexión abierta sigue funcionando
+        lib.conn.execute("INSERT INTO config (clave, valor) VALUES ('z', 'w')", []).unwrap();
+        lib.consolidar().unwrap();
+        drop(lib);
+        assert!(abrir(&c, &vieja).is_err());
+        assert!(matches!(abrir_con_contrasena(&c, "contraseña vieja"), Err(Error::LlaveIncorrecta)));
+        let (lib, _) = abrir_con_contrasena(&c, "contraseña nueva").unwrap();
+        let n: i64 = lib.conn.query_row("SELECT count(*) FROM config WHERE clave IN ('x', 'z')", [], |f| f.get(0)).unwrap();
+        assert_eq!(n, 2);
+        assert!(abrir(&c, &nueva).is_ok());
     }
 
     #[test]

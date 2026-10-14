@@ -35,7 +35,7 @@ fn sugerida(app: &AppHandle) -> String {
         .into_owned()
 }
 
-fn describir(app: &AppHandle, fase: &Fase, llavero: bool) -> EstadoInicial {
+pub(crate) fn describir(app: &AppHandle, fase: &Fase, llavero: bool) -> EstadoInicial {
     let base = EstadoInicial { fase: "configurar", carpeta: None, carpeta_sugerida: sugerida(app), tienda: None, usuaria: None, llavero };
     match fase {
         Fase::SinConfigurar => base,

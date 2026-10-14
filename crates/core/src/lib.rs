@@ -13,6 +13,7 @@ pub mod llave;
 pub mod portadas;
 pub mod qr_pago;
 pub mod reportes;
+pub mod respaldos;
 pub mod tienda;
 pub mod usuarios;
 pub mod ventas;

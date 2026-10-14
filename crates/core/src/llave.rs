@@ -34,6 +34,11 @@ impl Llave {
         hex::encode(self.0)
     }
 
+    /// Sentencia `PRAGMA rekey`: cambia la llave de una base ya abierta.
+    pub(crate) fn pragma_rekey(&self) -> String {
+        format!("PRAGMA rekey = \"x'{}'\";", self.a_hex())
+    }
+
     /// Sentencia `PRAGMA key` con la llave cruda.
     pub(crate) fn pragma(&self) -> String {
         format!("PRAGMA key = \"x'{}'\";", self.a_hex())

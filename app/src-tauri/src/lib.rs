@@ -6,6 +6,7 @@ mod estado;
 mod inventario;
 mod llavero;
 mod reportes;
+mod respaldos;
 mod ventas;
 
 use std::sync::Mutex;
@@ -23,6 +24,7 @@ pub fn run() {
             // abre sola la carpeta recordada si el llavero tiene la llave
             let fase = estado::fase_inicial(app.handle());
             *app.state::<Estado>().0.lock().expect("estado") = fase;
+            respaldos::iniciar_automatico(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -84,16 +86,27 @@ pub fn run() {
             encargos::margen_encargos,
             reportes::reporte,
             reportes::reporte_exportar,
+            respaldos::respaldo_estado,
+            respaldos::respaldo_config,
+            respaldos::respaldo_crear,
+            respaldos::respaldo_mostrar,
+            respaldos::respaldo_restaurar,
+            respaldos::respaldo_restaurar_nuevo,
+            respaldos::contrasena_cambiar,
+            respaldos::pin_recuperar,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar la Librería SIGLO XXI")
         .run(|app, evento| {
             // al salir, la base queda completa en libreria.db (sin depender del archivo -wal)
-            if let tauri::RunEvent::Exit = evento
-                && let Ok(fase) = app.state::<Estado>().0.lock()
-                && let Fase::Abierta(a) = &*fase
-            {
-                let _ = a.lib.consolidar();
+            if let tauri::RunEvent::Exit = evento {
+                // el respaldo del día (si todavía no se hizo) y la base completa en libreria.db
+                let _ = respaldos::respaldo_si_toca(app);
+                if let Ok(fase) = app.state::<Estado>().0.lock()
+                    && let Fase::Abierta(a) = &*fase
+                {
+                    let _ = a.lib.consolidar();
+                }
             }
         });
 }

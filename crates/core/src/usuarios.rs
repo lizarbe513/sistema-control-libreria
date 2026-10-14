@@ -113,6 +113,14 @@ pub fn cambiar_pin(conn: &Connection, id: i64, pin: &str) -> Result<()> {
     Ok(())
 }
 
+/// «Olvidé mi PIN»: solo para la Dueña (las vendedoras las restablece ella). Quien llama ya comprobó la contraseña maestra.
+pub fn restablecer_pin_duena(conn: &Connection, id: i64, pin: &str) -> Result<()> {
+    if obtener(conn, id)?.rol != Rol::Duena {
+        return Err(Error::Permiso("restablecer ese PIN con la contraseña maestra: se lo cambia la Dueña".into()));
+    }
+    cambiar_pin(conn, id, pin)
+}
+
 /// Guarda las preferencias (fondo, calma, barra de bloques, radio…). Se mezclan con las existentes.
 pub fn guardar_preferencias(conn: &Connection, id: i64, cambios: &serde_json::Value) -> Result<serde_json::Value> {
     let mut actual = obtener(conn, id)?.preferencias;
@@ -205,6 +213,18 @@ mod tests {
         assert!(crear(&c, "  ", Rol::Duena, "1234").is_err());
         crear(&c, "Rosa", Rol::Duena, "1234").unwrap();
         assert!(crear(&c, "rosa", Rol::Vendedor, "5678").is_err(), "nombre repetido");
+    }
+
+    #[test]
+    fn olvide_mi_pin_solo_la_duena() {
+        let c = en_memoria();
+        let d = crear(&c, "Marisol", Rol::Duena, "2468").unwrap();
+        let v = crear(&c, "Luis", Rol::Vendedor, "1357").unwrap();
+        restablecer_pin_duena(&c, d.id, "9999").unwrap();
+        assert!(verificar_pin(&c, d.id, "2468").is_err());
+        assert!(verificar_pin(&c, d.id, "9999").is_ok());
+        assert!(matches!(restablecer_pin_duena(&c, v.id, "9999"), Err(Error::Permiso(_))));
+        assert!(restablecer_pin_duena(&c, d.id, "12").is_err());
     }
 
     #[test]
