@@ -27,7 +27,7 @@ pub enum Metodo {
 }
 
 impl Metodo {
-    fn texto(self) -> &'static str {
+    pub(crate) fn texto(self) -> &'static str {
         match self {
             Metodo::Efectivo => "efectivo",
             Metodo::Tarjeta => "tarjeta",
@@ -35,7 +35,7 @@ impl Metodo {
             Metodo::Transferencia => "transferencia",
         }
     }
-    fn desde(t: &str) -> Metodo {
+    pub(crate) fn desde(t: &str) -> Metodo {
         match t {
             "tarjeta" => Metodo::Tarjeta,
             "yape_plin" => Metodo::YapePlin,
@@ -78,6 +78,9 @@ pub struct VentaEntrada {
     /// Descuento al total, después de los de cada libro y el del tipo de cliente.
     #[serde(default)]
     pub descuento: Option<Descuento>,
+    /// Entrega de un encargo: su adelanto se descuenta de lo que falta cobrar.
+    #[serde(default)]
+    pub encargo_id: Option<i64>,
     pub pagos: Vec<PagoEntrada>,
 }
 
@@ -138,13 +141,13 @@ pub fn calcular(lineas: &[(i64, i64, Option<Descuento>)], tipo_pct: i64, total: 
 }
 
 /// En efectivo no circulan monedas de 1 y 5 céntimos: lo que se paga en efectivo se baja a múltiplo de 10 céntimos,
-/// a favor del cliente. Los demás métodos cobran exacto. Devuelve cuánto se perdona.
-pub fn redondeo_efectivo(total_previo: i64, pagos: &[PagoEntrada]) -> i64 {
+/// a favor del cliente. Los demás métodos (y el adelanto de un encargo) cobran exacto. Devuelve cuánto se perdona.
+pub fn redondeo_efectivo(total_previo: i64, adelanto: i64, pagos: &[PagoEntrada]) -> i64 {
     if !pagos.iter().any(|p| p.metodo == Metodo::Efectivo) {
         return 0;
     }
     let otros: i64 = pagos.iter().filter(|p| p.metodo != Metodo::Efectivo).map(|p| p.monto_cent).sum();
-    let efectivo = total_previo - otros;
+    let efectivo = total_previo - adelanto - otros;
     if efectivo >= 10 { efectivo % 10 } else { 0 }
 }
 
@@ -283,13 +286,17 @@ pub struct Venta {
     pub anulada: bool,
     pub anulada_fecha: Option<String>,
     pub motivo_anulacion: String,
+    pub encargo_id: Option<i64>,
+    /// Lo que el cliente ya había dejado como adelanto del encargo.
+    pub adelanto_cent: i64,
     pub items: Vec<ItemVenta>,
     pub pagos: Vec<PagoVenta>,
 }
 
 const SELECT_VENTA: &str = "
     SELECT v.id, v.fecha, v.usuario_id, u.nombre, v.cliente_id, v.cliente_nombre, v.tipo_nombre, v.tipo_pct, v.subtotal_cent,
-           v.descuento_cent, v.redondeo_cent, v.total_cent, v.anulada, v.anulada_fecha, v.motivo_anulacion
+           v.descuento_cent, v.redondeo_cent, v.total_cent, v.anulada, v.anulada_fecha, v.motivo_anulacion,
+           v.encargo_id, v.adelanto_cent
       FROM ventas v JOIN usuarios u ON u.id = v.usuario_id ";
 
 fn cargar(conn: &Connection, f: &rusqlite::Row) -> rusqlite::Result<Venta> {
@@ -336,6 +343,8 @@ fn cargar(conn: &Connection, f: &rusqlite::Row) -> rusqlite::Result<Venta> {
         anulada: f.get::<_, i64>(12)? == 1,
         anulada_fecha: f.get(13)?,
         motivo_anulacion: f.get(14)?,
+        encargo_id: f.get(15)?,
+        adelanto_cent: f.get(16)?,
         items,
         pagos,
     })
@@ -368,6 +377,24 @@ pub fn registrar(conn: &mut Connection, e: &VentaEntrada, quien: &Usuaria) -> Re
         })
         .optional()?
         .ok_or_else(|| Error::NoEncontrado("ese tipo de cliente".into()))?;
+    // entrega de un encargo: debe seguir activo; el cliente y el adelanto salen de él
+    let mut cliente_id = e.cliente_id;
+    let adelanto = match e.encargo_id {
+        Some(eid) => {
+            let (estado, cid): (String, i64) = tx
+                .query_row("SELECT estado, cliente_id FROM encargos WHERE id = ?1", [eid], |f| Ok((f.get(0)?, f.get(1)?)))
+                .optional()?
+                .ok_or_else(|| Error::NoEncontrado("ese encargo".into()))?;
+            if matches!(estado.as_str(), "entregado" | "cancelado") {
+                return invalido(format!("Ese encargo ya está {estado}"));
+            }
+            cliente_id.get_or_insert(cid);
+            crate::encargos::adelanto_neto(&tx, eid)?
+        }
+        None => 0,
+    };
+    let e = &VentaEntrada { cliente_id, ..e.clone() };
+
     // nombre del cliente: el que escribió la vendedora, o el de la ficha registrada, o «Cliente»
     let registrado: Option<String> = match e.cliente_id {
         Some(c) => Some(
@@ -406,16 +433,23 @@ pub fn registrar(conn: &mut Connection, e: &VentaEntrada, quien: &Usuaria) -> Re
         }
     }
 
-    // pagos
-    if e.pagos.is_empty() {
+    // pagos (el adelanto del encargo ya está cobrado)
+    if adelanto > calc.total_previo_cent {
+        return invalido(format!(
+            "El adelanto ({}) es mayor que el total de la venta ({})",
+            soles(adelanto),
+            soles(calc.total_previo_cent)
+        ));
+    }
+    if e.pagos.is_empty() && adelanto < calc.total_previo_cent {
         return invalido("Agrega al menos un pago");
     }
     if e.pagos.iter().any(|p| p.monto_cent <= 0) {
         return invalido("Cada pago debe ser de más de S/ 0.00");
     }
-    let redondeo = redondeo_efectivo(calc.total_previo_cent, &e.pagos);
+    let redondeo = redondeo_efectivo(calc.total_previo_cent, adelanto, &e.pagos);
     let total = calc.total_previo_cent - redondeo;
-    let pagado: i64 = e.pagos.iter().map(|p| p.monto_cent).sum();
+    let pagado: i64 = e.pagos.iter().map(|p| p.monto_cent).sum::<i64>() + adelanto;
     if pagado < total {
         return invalido(format!("Faltan {} por cobrar", soles(total - pagado)));
     }
@@ -431,11 +465,31 @@ pub fn registrar(conn: &mut Connection, e: &VentaEntrada, quien: &Usuaria) -> Re
     }
 
     tx.execute(
-        "INSERT INTO ventas (usuario_id, cliente_id, tipo_cliente_id, tipo_nombre, tipo_pct, subtotal_cent, descuento_cent, redondeo_cent, total_cent, cliente_nombre)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        params![quien.id, e.cliente_id, e.tipo_cliente_id, tipo_nombre, tipo_pct, calc.subtotal_cent, calc.descuento_cent, redondeo, total, cliente_nombre],
+        "INSERT INTO ventas (usuario_id, cliente_id, tipo_cliente_id, tipo_nombre, tipo_pct, subtotal_cent, descuento_cent, redondeo_cent, total_cent, cliente_nombre, encargo_id, adelanto_cent)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![
+            quien.id,
+            e.cliente_id,
+            e.tipo_cliente_id,
+            tipo_nombre,
+            tipo_pct,
+            calc.subtotal_cent,
+            calc.descuento_cent,
+            redondeo,
+            total,
+            cliente_nombre,
+            e.encargo_id,
+            adelanto
+        ],
     )?;
     let id = tx.last_insert_rowid();
+    if let Some(eid) = e.encargo_id {
+        tx.execute(
+            "UPDATE encargos SET estado = 'entregado', venta_id = ?2, fecha_cierre = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                    actualizado = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?1",
+            params![eid, id],
+        )?;
+    }
     for ((i, (titulo, precio)), l) in e.items.iter().zip(&libros).zip(&calc.lineas) {
         tx.execute(
             "INSERT INTO venta_items (venta_id, libro_id, titulo, cantidad, precio_unit_cent, descuento_cent, total_cent) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -484,6 +538,12 @@ pub fn anular(conn: &mut Connection, id: i64, motivo: &str, quien: &Usuaria) -> 
     for (libro, cantidad) in items {
         mover_stock(&tx, libro, cantidad, "anulacion", &format!("anulación venta #{id}"), Some(quien.id), false)?;
     }
+    // si era la entrega de un encargo, el encargo vuelve a estar listo para entregar (con su adelanto)
+    tx.execute(
+        "UPDATE encargos SET estado = 'avisado', venta_id = NULL, fecha_cierre = NULL,
+                actualizado = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE venta_id = ?1",
+        [id],
+    )?;
     tx.commit()?;
     obtener(conn, id)
 }
@@ -502,7 +562,10 @@ pub struct Resumen {
     pub anuladas: i64,
     pub unidades: i64,
     pub total_cent: i64,
+    /// Caja real por método: pagos de las ventas más adelantos (y devoluciones) de encargos del período.
     pub por_metodo: Vec<PorMetodo>,
+    /// Adelantos de encargos recibidos en el período, menos las devoluciones.
+    pub adelantos_cent: i64,
 }
 
 /// Resumen de las ventas (sin las anuladas) con fecha en `[desde, hasta)`.
@@ -521,13 +584,21 @@ pub fn resumen(conn: &Connection, desde: &str, hasta: &str) -> Result<Resumen> {
         |f| f.get(0),
     )?;
     let mut st = conn.prepare(
-        "SELECT p.metodo, SUM(p.monto_cent) FROM pagos p JOIN ventas v ON v.id = p.venta_id
-          WHERE v.anulada = 0 AND v.fecha >= ?1 AND v.fecha < ?2 GROUP BY p.metodo ORDER BY p.metodo",
+        "SELECT metodo, SUM(monto) FROM (
+            SELECT p.metodo, p.monto_cent AS monto FROM pagos p JOIN ventas v ON v.id = p.venta_id
+             WHERE v.anulada = 0 AND v.fecha >= ?1 AND v.fecha < ?2
+            UNION ALL
+            SELECT metodo, monto_cent FROM encargo_pagos WHERE fecha >= ?1 AND fecha < ?2
+          ) GROUP BY metodo HAVING SUM(monto) <> 0 ORDER BY metodo",
     )?;
     let por_metodo = st
         .query_map([desde, hasta], |f| Ok(PorMetodo { metodo: Metodo::desde(&f.get::<_, String>(0)?), monto_cent: f.get(1)? }))?
         .collect::<rusqlite::Result<_>>()?;
-    Ok(Resumen { ventas, anuladas, unidades, total_cent: total, por_metodo })
+    let adelantos: i64 =
+        conn.query_row("SELECT COALESCE(SUM(monto_cent), 0) FROM encargo_pagos WHERE fecha >= ?1 AND fecha < ?2", [desde, hasta], |f| {
+            f.get(0)
+        })?;
+    Ok(Resumen { ventas, anuladas, unidades, total_cent: total, por_metodo, adelantos_cent: adelantos })
 }
 
 #[cfg(test)]
@@ -572,7 +643,7 @@ mod tests {
     }
 
     fn venta(items: Vec<ItemEntrada>, tipo: i64, pagos: Vec<PagoEntrada>) -> VentaEntrada {
-        VentaEntrada { items, tipo_cliente_id: tipo, cliente_id: None, cliente_nombre: None, descuento: None, pagos }
+        VentaEntrada { items, tipo_cliente_id: tipo, cliente_id: None, cliente_nombre: None, descuento: None, encargo_id: None, pagos }
     }
     fn item(libro_id: i64, cantidad: i64) -> ItemEntrada {
         ItemEntrada { libro_id, cantidad, descuento: None }
@@ -601,12 +672,12 @@ mod tests {
 
     #[test]
     fn redondeo_solo_en_efectivo() {
-        assert_eq!(redondeo_efectivo(3746, &[efectivo(3746)]), 6);
-        assert_eq!(redondeo_efectivo(3746, &[yape(3746)]), 0);
+        assert_eq!(redondeo_efectivo(3746, 0, &[efectivo(3746)]), 6);
+        assert_eq!(redondeo_efectivo(3746, 0, &[yape(3746)]), 0);
         // efectivo + Yape: se redondea solo lo que va en efectivo (3746 − 2000 = 1746 → 6 céntimos)
-        assert_eq!(redondeo_efectivo(3746, &[yape(2000), efectivo(1740)]), 6);
+        assert_eq!(redondeo_efectivo(3746, 0, &[yape(2000), efectivo(1740)]), 6);
         // si el efectivo es exacto a 10 céntimos, no hay redondeo
-        assert_eq!(redondeo_efectivo(3750, &[yape(1750), efectivo(2000)]), 0);
+        assert_eq!(redondeo_efectivo(3750, 0, &[yape(1750), efectivo(2000)]), 0);
     }
 
     #[test]
@@ -674,7 +745,7 @@ mod tests {
         // con cliente registrado y sin nombre escrito, usa el de la ficha
         let c = crate::clientes::crear_rapido(
             &m.c,
-            &crate::clientes::ClienteEntrada { nombre: "Prof. Mendoza".into(), telefono: String::new(), tipo_cliente_id: Some(2) },
+            &crate::clientes::ClienteEntrada { nombre: "Prof. Mendoza".into(), tipo_cliente_id: Some(2), ..Default::default() },
         )
         .unwrap();
         v.cliente_id = Some(c.id);

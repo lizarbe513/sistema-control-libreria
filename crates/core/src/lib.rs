@@ -5,6 +5,7 @@ pub mod busqueda;
 pub mod carpeta;
 pub mod clientes;
 pub mod db;
+pub mod encargos;
 pub mod error;
 pub mod isbn;
 pub mod libros;

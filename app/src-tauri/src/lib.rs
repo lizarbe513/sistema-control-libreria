@@ -1,6 +1,7 @@
 //! App de escritorio (Tauri 2) de la Librería SIGLO XXI.
 
 mod comandos;
+mod encargos;
 mod estado;
 mod inventario;
 mod llavero;
@@ -15,6 +16,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(Estado(Mutex::new(Fase::SinConfigurar)))
         .setup(|app| {
             // abre sola la carpeta recordada si el llavero tiene la llave
@@ -67,6 +69,17 @@ pub fn run() {
             ventas::qr_pago_obtener,
             ventas::qr_pago_guardar,
             ventas::qr_pago_quitar,
+            encargos::encargos_listar,
+            encargos::encargo_crear,
+            encargos::encargo_estado,
+            encargos::encargo_enlazar_libro,
+            encargos::encargos_esperando,
+            encargos::encargos_apartados,
+            encargos::encargos_coincidencias,
+            encargos::cliente_guardar,
+            encargos::cliente_ficha,
+            encargos::whatsapp_plantilla,
+            encargos::encargo_avisar_whatsapp,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar la Librería SIGLO XXI")
