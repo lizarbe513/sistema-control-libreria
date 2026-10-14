@@ -60,13 +60,20 @@ export function pintarMadera(base: string, semilla = 1, tablas = 4) {
   return c;
 }
 
-/** Libros parados de una repisa, sin marco (el marco lo ponen las piezas según los vecinos). */
+/** Altura (de 128) de la tabla de madera sobre la que se apoyan los libros, en la cara principal. */
+const BASE_REPISA = 20;
+
+/**
+ * Frente de un compartimento: el fondo, los libros parados y, abajo, la **tabla de madera** de la repisa
+ * (con vetas, un reborde iluminado y una sombra), sin marco (lo ponen las piezas según los vecinos).
+ */
 function pintarLibros(semilla: number) {
   const [c, x] = lienzo();
   const r = azarSemilla(semilla * 7919);
-  const g = x.createLinearGradient(0, 0, 0, 128);
-  g.addColorStop(0, '#6E4A33');
-  g.addColorStop(1, '#8A5E40');
+  const suelo = 128 - BASE_REPISA; // línea donde se apoyan los libros
+  const g = x.createLinearGradient(0, 0, 0, suelo);
+  g.addColorStop(0, '#5E3F2B');
+  g.addColorStop(1, '#7A5238');
   x.fillStyle = g;
   x.fillRect(0, 0, 128, 128);
   let px = 2;
@@ -77,11 +84,11 @@ function pintarLibros(semilla: number) {
     }
     const w = 7 + r() * 9;
     if (px + w > 126) break;
-    const h = 72 + r() * 44;
+    const h = 60 + r() * 40;
     const color = LOMOS[Math.floor(r() * LOMOS.length)];
     const inclinado = r() < 0.08 && px > 14;
     x.save();
-    x.translate(px, 128);
+    x.translate(px, suelo);
     if (inclinado) x.rotate(-0.16);
     x.fillStyle = color;
     x.fillRect(0, -h, w, h);
@@ -95,8 +102,35 @@ function pintarLibros(semilla: number) {
     x.restore();
     px += w + 0.8;
   }
-  x.fillStyle = 'rgba(0,0,0,0.22)';
-  x.fillRect(0, 0, 128, 7);
+  // sombra que cae de la tabla de arriba, y la que proyectan los libros sobre la tabla de abajo
+  x.fillStyle = 'rgba(0,0,0,0.24)';
+  x.fillRect(0, 0, 128, 6);
+  const sombra = x.createLinearGradient(0, suelo - 6, 0, suelo);
+  sombra.addColorStop(0, 'rgba(0,0,0,0)');
+  sombra.addColorStop(1, 'rgba(0,0,0,0.16)');
+  x.fillStyle = sombra;
+  x.fillRect(0, suelo - 6, 128, 6);
+
+  // la tabla: frente de madera clara con vetas
+  const m = x.createLinearGradient(0, suelo, 0, 128);
+  m.addColorStop(0, '#E7BE92');
+  m.addColorStop(0.5, '#D9A878');
+  m.addColorStop(1, '#C48F61');
+  x.fillStyle = m;
+  x.fillRect(0, suelo, 128, BASE_REPISA);
+  x.strokeStyle = 'rgba(120,70,35,0.28)';
+  x.lineWidth = 1;
+  for (let i = 0; i < 5; i++) {
+    const y = suelo + 4 + r() * (BASE_REPISA - 8);
+    x.beginPath();
+    x.moveTo(0, y);
+    x.bezierCurveTo(36, y + (r() - 0.5) * 3, 90, y + (r() - 0.5) * 3, 128, y);
+    x.stroke();
+  }
+  x.fillStyle = 'rgba(255,245,225,0.75)'; // reborde iluminado
+  x.fillRect(0, suelo, 128, 2);
+  x.fillStyle = 'rgba(70,35,15,0.42)'; // arista de abajo
+  x.fillRect(0, 126, 128, 2);
   return c;
 }
 
@@ -435,13 +469,19 @@ export function crearRecursos(): Recursos {
     const e = 0.003; // los marcos sobresalen un poco del cuerpo
     const L = 1 + e * 2;
     const F = fondo + e * 2;
+    // en las estanterías, la tabla sobresale hacia el frente como un listón de repisa de verdad
+    const sale = familia === 'estante' ? 0.07 : 0;
+    const gruesoTabla = grosor * (familia === 'estante' ? 1.05 : 0.55);
+    const gruesoDivisor = grosor * (familia === 'estante' ? 0.85 : 0.6);
+    const fondoInterno = fondo * 0.9 + sale;
+    const zInterno = -fondo * 0.05 + 0.01 + sale / 2;
     const p: Record<Pieza, THREE.BufferGeometry> = {
       marcoIzq: caja(grosor + e, L, F, -0.5 + (grosor - e) / 2),
       marcoDer: caja(grosor + e, L, F, 0.5 - (grosor - e) / 2),
       marcoArr: caja(L, grosor + e, F, 0, 0.5 - (grosor - e) / 2),
       marcoAbj: caja(L, grosor * 1.4 + e, F, 0, -0.5 + (grosor * 1.4 - e) / 2),
-      divisor: caja(grosor * 0.6, 1, fondo * 0.9, -0.5, 0, -fondo * 0.05 + 0.01),
-      tabla: caja(1, grosor * 0.55, fondo * 0.9, 0, 0.5, -fondo * 0.05 + 0.01),
+      divisor: caja(gruesoDivisor, 1, fondoInterno, -0.5, 0, zInterno),
+      tabla: caja(1, gruesoTabla, fondoInterno, 0, 0.5, zInterno),
     };
     for (const k of PIEZAS) piezas.set(`${familia}:${k}`, { geo: geo(p[k]), mat: k.startsWith('marco') ? maderaMarco : madera });
   };
