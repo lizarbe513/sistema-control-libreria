@@ -68,6 +68,12 @@ pub struct EncargoEntrada {
     pub cantidad: Option<i64>,
     pub notas: String,
     pub adelanto: Option<AdelantoEntrada>,
+    /// Costo del proveedor (opcional).
+    pub costo_cent: Option<i64>,
+    /// Precio que se le dice al cliente. Sin precio y con costo, se calcula con el margen de Ajustes.
+    pub precio_acordado_cent: Option<i64>,
+    /// Portada de referencia (de la búsqueda en internet) mientras el libro no está en el inventario.
+    pub portada_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -99,13 +105,17 @@ pub struct Encargo {
     pub color_tapa: Option<String>,
     pub formato: Option<String>,
     pub categoria: Option<String>,
+    pub costo_cent: Option<i64>,
+    pub precio_acordado_cent: Option<i64>,
+    pub portada_url: Option<String>,
 }
 
 const SELECT: &str = "
     SELECT e.id, e.cliente_id, c.nombre, c.telefono, e.libro_id, e.titulo, e.autor, e.cantidad, e.estado, e.notas,
            e.creado, e.actualizado, e.fecha_pedido, e.fecha_llego, e.fecha_aviso, e.fecha_cierre, e.venta_id,
            (SELECT COALESCE(SUM(monto_cent), 0) FROM encargo_pagos p WHERE p.encargo_id = e.id),
-           l.precio_cent, l.stock, l.portada, l.color_tapa, l.formato, k.clave
+           l.precio_cent, l.stock, l.portada, l.color_tapa, l.formato, k.clave,
+           e.costo_cent, e.precio_acordado_cent, e.portada_url
       FROM encargos e JOIN clientes c ON c.id = e.cliente_id
       LEFT JOIN libros l ON l.id = e.libro_id LEFT JOIN categorias k ON k.id = l.categoria_id";
 
@@ -135,6 +145,9 @@ fn fila(f: &rusqlite::Row) -> rusqlite::Result<Encargo> {
         color_tapa: f.get(21)?,
         formato: f.get(22)?,
         categoria: f.get(23)?,
+        costo_cent: f.get(24)?,
+        precio_acordado_cent: f.get(25)?,
+        portada_url: f.get(26)?,
     })
 }
 
@@ -168,6 +181,12 @@ pub fn crear(conn: &mut Connection, e: &EncargoEntrada, quien: &Usuaria) -> Resu
     {
         return invalido("El adelanto debe ser de más de S/ 0.00");
     }
+    if e.costo_cent.is_some_and(|c| c < 0) || e.precio_acordado_cent.is_some_and(|c| c < 0) {
+        return invalido("El costo y el precio no pueden ser negativos");
+    }
+    if e.portada_url.as_deref().is_some_and(|u| !(u.starts_with("https://") || u.starts_with("http://"))) {
+        return invalido("Dirección de portada no válida");
+    }
     let tx = conn.transaction()?;
     let (mut titulo, mut autor) = (e.titulo.trim().to_string(), e.autor.trim().to_string());
     if let Some(l) = e.libro_id {
@@ -190,9 +209,17 @@ pub fn crear(conn: &mut Connection, e: &EncargoEntrada, quien: &Usuaria) -> Resu
         (None, Some(nuevo)) => clientes::crear_rapido(&tx, nuevo)?.id,
         (None, None) => return invalido("Elige o registra al cliente que hace el encargo"),
     };
+    // el precio: el acordado; o, con costo, costo + margen; o, si el libro ya está, el de la tienda
+    let precio = match (e.precio_acordado_cent, e.costo_cent) {
+        (Some(p), _) => Some(p),
+        (None, Some(c)) => Some(precio_con_margen(c, margen(&tx)?)),
+        (None, None) => None,
+    };
+    let portada_url = if e.libro_id.is_some() { None } else { e.portada_url.clone() };
     tx.execute(
-        "INSERT INTO encargos (cliente_id, libro_id, titulo, autor, cantidad, notas, usuario_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![cliente_id, e.libro_id, titulo, autor, cantidad, e.notas.trim(), quien.id],
+        "INSERT INTO encargos (cliente_id, libro_id, titulo, autor, cantidad, notas, usuario_id, costo_cent, precio_acordado_cent, portada_url)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![cliente_id, e.libro_id, titulo, autor, cantidad, e.notas.trim(), quien.id, e.costo_cent, precio, portada_url],
     )?;
     let id = tx.last_insert_rowid();
     if let Some(a) = &e.adelanto {
@@ -300,6 +327,38 @@ pub fn coincidencias(conn: &Connection, titulo: &str) -> Result<Vec<Encargo>> {
         .collect())
 }
 
+// ── precio con margen ─────────────────────────────────────────────────────────
+
+pub const MARGEN_DEFECTO: i64 = 30;
+
+/// Margen de ganancia (%) que se aplica al costo de un libro encargado.
+pub fn margen(conn: &Connection) -> Result<i64> {
+    let v: Option<String> = conn.query_row("SELECT valor FROM config WHERE clave = 'margen_encargos'", [], |f| f.get(0)).optional()?;
+    Ok(v.and_then(|t| t.parse().ok()).unwrap_or(MARGEN_DEFECTO))
+}
+
+/// Solo la Dueña.
+pub fn fijar_margen(conn: &Connection, pct: i64, quien: &Usuaria) -> Result<i64> {
+    if quien.rol != Rol::Duena {
+        return Err(Error::Permiso("cambiar el margen de ganancia".into()));
+    }
+    if !(0..=500).contains(&pct) {
+        return invalido("El margen debe estar entre 0 % y 500 %");
+    }
+    conn.execute(
+        "INSERT INTO config (clave, valor) VALUES ('margen_encargos', ?1) ON CONFLICT (clave) DO UPDATE SET valor = ?1",
+        [pct.to_string()],
+    )?;
+    Ok(pct)
+}
+
+/// Precio de venta = costo + margen %, subido al siguiente múltiplo de 10 céntimos (precios «redondos» para el cliente).
+pub fn precio_con_margen(costo_cent: i64, margen_pct: i64) -> i64 {
+    let arriba = |n: i64, d: i64| (n + d - 1) / d;
+    let cent = arriba(costo_cent * (100 + margen_pct), 100);
+    arriba(cent, 10) * 10
+}
+
 // ── WhatsApp ──────────────────────────────────────────────────────────────────
 
 pub const PLANTILLA_DEFECTO: &str = "¡Hola, {cliente}! 📚 Te escribimos de la librería {tienda}. Ya llegó tu encargo: «{libro}». \
@@ -332,7 +391,7 @@ pub fn fijar_plantilla(conn: &Connection, texto: &str, quien: &Usuaria) -> Resul
 /// Rellena la plantilla para un encargo. `{saldo}`: lo que falta pagar (si se sabe el precio) o el adelanto dejado.
 pub fn mensaje(conn: &Connection, id: i64, tienda: &str) -> Result<String> {
     let e = obtener(conn, id)?;
-    let saldo = match (e.precio_cent, e.adelanto_cent) {
+    let saldo = match (e.precio_acordado_cent.or(e.precio_cent), e.adelanto_cent) {
         (Some(p), a) if p * e.cantidad - a > 0 => format!("Saldo a pagar: {}. ", soles(p * e.cantidad - a)),
         (Some(_), a) if a > 0 => "Ya está pagado por completo. ".into(),
         (None, a) if a > 0 => format!("Ya dejaste {} de adelanto. ", soles(a)),
@@ -512,6 +571,40 @@ mod tests {
             ventas::redondeo_efectivo(5547, 1000, &[PagoEntrada { metodo: Metodo::Efectivo, monto_cent: 4540, recibido_cent: None }]),
             7
         );
+    }
+
+    #[test]
+    fn precio_con_margen_y_encargo_con_costo() {
+        assert_eq!(precio_con_margen(2000, 30), 2600);
+        assert_eq!(precio_con_margen(2349, 30), 3060); // 30,537 → 30,60
+        assert_eq!(precio_con_margen(1000, 0), 1000);
+        let mut m = mundo();
+        assert_eq!(margen(&m.c).unwrap(), 30);
+        assert!(fijar_margen(&m.c, 40, &m.vendedora).is_err());
+        assert_eq!(fijar_margen(&m.c, 50, &m.duena).unwrap(), 50);
+        assert!(fijar_margen(&m.c, 900, &m.duena).is_err());
+        // sin precio y con costo: costo + margen (50 %)
+        let e = EncargoEntrada {
+            cliente: Some(ClienteEntrada { nombre: "Ana".into(), ..Default::default() }),
+            titulo: "Los heraldos negros".into(),
+            costo_cent: Some(2000),
+            portada_url: Some("https://covers.openlibrary.org/b/id/1-L.jpg".into()),
+            ..Default::default()
+        };
+        let a = crear(&mut m.c, &e, &m.vendedora).unwrap();
+        assert_eq!((a.costo_cent, a.precio_acordado_cent), (Some(2000), Some(3000)));
+        assert_eq!(a.portada_url.as_deref(), Some("https://covers.openlibrary.org/b/id/1-L.jpg"));
+        // un precio acordado manda sobre el cálculo
+        let b = crear(&mut m.c, &EncargoEntrada { precio_acordado_cent: Some(3490), ..e.clone() }, &m.vendedora).unwrap();
+        assert_eq!(b.precio_acordado_cent, Some(3490));
+        // si es un libro del inventario no guarda portada de referencia
+        let c = crear(&mut m.c, &EncargoEntrada { libro_id: Some(m.libro), portada_url: e.portada_url.clone(), ..e.clone() }, &m.vendedora)
+            .unwrap();
+        assert_eq!(c.portada_url, None);
+        assert!(crear(&mut m.c, &EncargoEntrada { portada_url: Some("javascript:alert(1)".into()), ..e }, &m.vendedora).is_err());
+        // el saldo del aviso usa el precio acordado
+        let t = mensaje(&m.c, a.id, "X").unwrap();
+        assert!(t.contains("Saldo a pagar: S/ 30.00"), "{t}");
     }
 
     #[test]

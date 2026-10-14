@@ -80,6 +80,7 @@ pub fn run() {
             encargos::cliente_ficha,
             encargos::whatsapp_plantilla,
             encargos::encargo_avisar_whatsapp,
+            encargos::margen_encargos,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar la Librería SIGLO XXI")

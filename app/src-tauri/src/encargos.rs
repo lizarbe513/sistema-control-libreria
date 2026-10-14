@@ -118,3 +118,15 @@ pub fn encargo_avisar_whatsapp(app: AppHandle, estado: State<EstadoApp>, id: i64
     app.opener().open_url(&url, None::<&str>).map_err(|e| Error::Validacion(format!("No se pudo abrir WhatsApp: {e}")))?;
     Ok((encargo, url))
 }
+
+/// Margen de ganancia (%) para el precio de un libro encargado. Con `pct` lo cambia (solo la Dueña).
+#[tauri::command]
+pub fn margen_encargos(estado: State<EstadoApp>, pct: Option<i64>) -> Res<i64> {
+    con_abierta(&estado, |a| {
+        let yo = a.usuaria()?.clone();
+        match pct {
+            Some(p) => encargos::fijar_margen(&a.lib.conn, p, &yo),
+            None => encargos::margen(&a.lib.conn),
+        }
+    })
+}
