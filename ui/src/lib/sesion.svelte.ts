@@ -48,7 +48,19 @@ export function aplicarEstado(e: EstadoInicial) {
   if (!e.llavero) avisar('Este equipo no tiene llavero: pedirá la contraseña maestra cada vez que se abra');
 }
 
+let escuchando = false;
+/** El respaldo automático corre en segundo plano (Rust): si algo falla, aparece un aviso. */
+async function escucharRespaldos() {
+  if (escuchando || !('__TAURI_INTERNALS__' in window)) return;
+  escuchando = true;
+  const { listen } = await import('@tauri-apps/api/event');
+  await listen<{ hecho: boolean; aviso: string | null }>('respaldo', (e) => {
+    if (e.payload.aviso) avisar(`Respaldo del día hecho, pero: ${e.payload.aviso}`);
+  });
+}
+
 export function entrarCon(u: Usuaria) {
+  void escucharRespaldos();
   sesion.usuaria = u;
   app.usuario = u.nombre;
   aplicarPreferencias(u.preferencias);

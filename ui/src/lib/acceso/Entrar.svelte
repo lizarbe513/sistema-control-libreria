@@ -7,12 +7,14 @@
   import { entrarCon, sesion } from '../sesion.svelte';
   import TecladoPin from '../componentes/TecladoPin.svelte';
   import MarcoAcceso from './MarcoAcceso.svelte';
+  import OlvidePin from './OlvidePin.svelte';
 
   let personas = $state<Usuaria[]>([]);
   let elegida = $state<Usuaria | null>(null);
   let ocupado = $state(false);
   let error = $state('');
   let sacudir = $state(0);
+  let olvido = $state(false);
 
   onMount(async () => {
     try {
@@ -40,7 +42,7 @@
   const COLORES = ['#F27A9B', '#9B87E0', '#5DBB8A', '#6FA8DC', '#E9B949', '#F0A070'];
 </script>
 
-<MarcoAcceso titulo={elegida ? `${saludo()}, ${elegida.nombre}` : `${saludo()} ✨`} subtitulo={elegida ? 'Escribe tu PIN' : `¿Quién atiende hoy en ${sesion.estado?.tienda ?? 'la librería'}?`} ancho={elegida ? 400 : 560}>
+<MarcoAcceso titulo={elegida ? `${saludo()}, ${elegida.nombre}` : `${saludo()} ✨`} subtitulo={olvido ? 'Con la contraseña maestra eliges un PIN nuevo' : elegida ? 'Escribe tu PIN' : `¿Quién atiende hoy en ${sesion.estado?.tienda ?? 'la librería'}?`} ancho={elegida ? 400 : 560}>
   {#if !elegida}
     <div class="personas" in:fly={{ y: 10, duration: 300 }}>
       {#each personas as p, i (p.id)}
@@ -51,9 +53,16 @@
         </button>
       {/each}
     </div>
+  {:else if olvido}
+    <div in:fly={{ x: 20, duration: 300 }}>
+      <OlvidePin duena={elegida} onListo={() => ((olvido = false), (error = ''))} onVolver={() => (olvido = false)} />
+    </div>
   {:else}
     <div class="pin" in:fly={{ x: 20, duration: 300 }}>
       <TecladoPin onEnviar={enviar} {ocupado} {sacudir} />
+      {#if elegida.rol === 'duena'}
+        <button class="enlace" onclick={() => ((olvido = true), (error = ''))}>¿Olvidaste tu PIN?</button>
+      {/if}
       {#if personas.length > 1}
         <button class="enlace" onclick={() => ((elegida = null), (error = ''))}>← No soy {elegida.nombre}</button>
       {/if}

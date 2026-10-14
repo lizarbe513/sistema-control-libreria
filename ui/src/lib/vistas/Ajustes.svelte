@@ -3,6 +3,8 @@
   import { app, avisar, guardar, type AnimLibro } from '../estado.svelte';
   import { api } from '../api';
   import { cerrarSesion, esDuena, sesion } from '../sesion.svelte';
+  import CambiarContrasena from '../componentes/CambiarContrasena.svelte';
+  import Respaldos from '../componentes/Respaldos.svelte';
   import MargenEncargos from '../componentes/MargenEncargos.svelte';
   import MensajeWhatsapp from '../componentes/MensajeWhatsapp.svelte';
   import MetodosPago from '../componentes/MetodosPago.svelte';
@@ -92,6 +94,16 @@
         <input type="checkbox" checked={inventario.vendedoresEditan} onchange={(e) => cambiarPermiso(e.currentTarget.checked)} />
         <span class="pastilla" aria-hidden="true"></span>
       </label>
+    </section>
+
+    <section class="vidrio bloque">
+      <h2 class="titulo-seccion">Respaldos</h2>
+      <Respaldos />
+    </section>
+
+    <section class="vidrio bloque">
+      <h2 class="titulo-seccion">Seguridad: contraseña maestra</h2>
+      <CambiarContrasena />
     </section>
 
     <section class="vidrio bloque">

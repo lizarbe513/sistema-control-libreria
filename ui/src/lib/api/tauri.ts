@@ -6,6 +6,8 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  EstadoRespaldos,
+  ResultadoRespaldo,
   ConsultaReporte,
   Reporte,
   TipoCsv,
@@ -238,5 +240,34 @@ export class ApiTauri implements Api {
     const ruta = await save({ title: 'Guardar el reporte', defaultPath: nombreSugerido, filters: [{ name: 'Excel / CSV', extensions: ['csv'] }] });
     if (!ruta) return null;
     return this.llamar<string>('reporte_exportar', { tipo, consulta, ruta });
+  }
+  // ── respaldos y seguridad ──
+  estadoRespaldos() {
+    return this.llamar<EstadoRespaldos>('respaldo_estado');
+  }
+  configurarRespaldos(externo: string | null, conservar: number) {
+    return this.llamar<EstadoRespaldos>('respaldo_config', { externo, conservar });
+  }
+  crearRespaldo(destino?: string | null) {
+    return this.llamar<ResultadoRespaldo>('respaldo_crear', { destino: destino ?? null });
+  }
+  mostrarRespaldos() {
+    return this.llamar<void>('respaldo_mostrar');
+  }
+  async elegirRespaldo() {
+    const r = await open({ multiple: false, title: 'Elige el respaldo', filters: [{ name: 'Respaldo de la librería', extensions: ['zip'] }] });
+    return typeof r === 'string' ? r : null;
+  }
+  restaurarRespaldo(zip: string, contrasena: string) {
+    return this.llamar<EstadoInicial>('respaldo_restaurar', { zip, contrasena });
+  }
+  restaurarNuevo(zip: string, carpeta: string, contrasena: string) {
+    return this.llamar<EstadoInicial>('respaldo_restaurar_nuevo', { zip, carpeta, contrasena });
+  }
+  cambiarContrasena(actual: string, nueva: string) {
+    return this.llamar<boolean>('contrasena_cambiar', { actual, nueva });
+  }
+  recuperarPin(id: number, contrasena: string, pinNuevo: string) {
+    return this.llamar<void>('pin_recuperar', { id, contrasena, pinNuevo });
   }
 }

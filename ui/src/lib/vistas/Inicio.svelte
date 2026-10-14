@@ -2,6 +2,7 @@
   import Icono from '../componentes/Icono.svelte';
   import { api, type Encargo, type ResumenInventario, type ResumenVentas } from '../api';
   import { encargosUI, ESTADOS, hace } from '../encargos.svelte';
+  import { esDuena } from '../sesion.svelte';
   import { soles } from '../datos';
   import { hoyLocal, rangoDia, ventasCambio } from '../ventas/carrito.svelte';
   import type { Libro } from '../datos';
@@ -29,6 +30,20 @@
   const porAvisar = $derived(encargos.filter((e) => e.estado === 'llego'));
   // primero los que llegaron (hay que avisar), luego los más antiguos
   const destacados = $derived([...porAvisar, ...encargos.filter((e) => e.estado !== 'llego')].slice(0, 4));
+
+  // aviso discreto para la Dueña: los datos solo están en este PC, o no hay respaldo reciente
+  let respaldoNota = $state('');
+  $effect(() => {
+    if (!esDuena()) return;
+    api
+      .estadoRespaldos()
+      .then((r) => {
+        const ultimo = r.interno[0];
+        const dias = ultimo ? (Date.now() - new Date(ultimo.fecha).getTime()) / 86_400_000 : Infinity;
+        respaldoNota = !ultimo ? 'Todavía no hay ningún respaldo de tus datos.' : dias > 3 ? 'Hace más de 3 días que no se hace un respaldo.' : !r.configuracion.externo ? 'Tus respaldos solo están en este PC: elige una carpeta externa (pendrive o la nube).' : '';
+      })
+      .catch(() => (respaldoNota = ''));
+  });
 
   let hoy = $state<ResumenVentas | null>(null);
   $effect(() => {
@@ -85,6 +100,10 @@
       </svg>
     {/if}
   </header>
+
+  {#if respaldoNota}
+    <button class="nota-respaldo" onclick={() => (app.vista = 'ajustes')} data-testid="nota-respaldo">💾 {respaldoNota} <b>Ir a Ajustes →</b></button>
+  {/if}
 
   <div class="rejilla" data-vacio>
     <section class="resumen">
@@ -181,6 +200,17 @@
 </div>
 
 <style>
+  .nota-respaldo {
+    text-align: left;
+    padding: 10px 16px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--yellow) 55%, var(--surface));
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .nota-respaldo b {
+    color: var(--primary-strong);
+  }
   .estado-enc {
     padding: 3px 9px;
     border-radius: 999px;

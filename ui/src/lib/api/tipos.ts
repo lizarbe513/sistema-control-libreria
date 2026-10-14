@@ -353,3 +353,31 @@ export interface Reporte {
   sinMovimientoTotal: number;
   inmovilizadoCent: number;
 }
+
+// ── respaldos (solo la Dueña) ──
+export type TipoRespaldo = 'auto' | 'manual' | 'seguridad';
+export interface Respaldo {
+  archivo: string;
+  ruta: string;
+  bytes: number;
+  /** Instante UTC (ISO). */
+  fecha: string;
+  tipo: TipoRespaldo;
+}
+export interface ConfigRespaldos {
+  externo: string | null;
+  conservar: number;
+  ultimoAuto: string | null;
+}
+export interface EstadoRespaldos {
+  configuracion: ConfigRespaldos;
+  externoDisponible: boolean;
+  carpetaInterna: string;
+  interno: Respaldo[];
+  externo: Respaldo[];
+}
+export interface ResultadoRespaldo {
+  respaldo: Respaldo;
+  /** Algo que la Dueña debe saber (p. ej. la carpeta externa no estaba conectada). El interno sí se hizo. */
+  aviso: string | null;
+}

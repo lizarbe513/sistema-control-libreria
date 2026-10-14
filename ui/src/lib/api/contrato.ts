@@ -3,6 +3,8 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  EstadoRespaldos,
+  ResultadoRespaldo,
   ConsultaReporte,
   Reporte,
   TipoCsv,
@@ -120,4 +122,22 @@ export interface Api {
   reporte(c: ConsultaReporte): Promise<Reporte>;
   /** Pide dónde guardar y escribe el CSV. Devuelve la ruta (o null si se cancela). */
   exportarReporte(tipo: TipoCsv, c: ConsultaReporte, nombreSugerido: string): Promise<string | null>;
+
+  // ── respaldos y seguridad ──
+  estadoRespaldos(): Promise<EstadoRespaldos>;
+  /** Carpeta externa (null para quitarla) y cuántos respaldos automáticos se conservan. */
+  configurarRespaldos(externo: string | null, conservar: number): Promise<EstadoRespaldos>;
+  /** Respaldo manual; con `destino` además se guarda una copia en esa carpeta. */
+  crearRespaldo(destino?: string | null): Promise<ResultadoRespaldo>;
+  mostrarRespaldos(): Promise<void>;
+  /** Diálogo para elegir un respaldo (.zip). */
+  elegirRespaldo(): Promise<string | null>;
+  /** Reemplaza los datos actuales (tras un respaldo de seguridad). Termina sin sesión. */
+  restaurarRespaldo(zip: string, contrasena: string): Promise<EstadoInicial>;
+  /** PC nuevo: restaura en una carpeta nueva y la abre. */
+  restaurarNuevo(zip: string, carpeta: string, contrasena: string): Promise<EstadoInicial>;
+  /** Devuelve si el llavero del equipo se actualizó. */
+  cambiarContrasena(actual: string, nueva: string): Promise<boolean>;
+  /** «Olvidé mi PIN» de la Dueña: con la contraseña maestra. */
+  recuperarPin(id: number, contrasena: string, pinNuevo: string): Promise<void>;
 }

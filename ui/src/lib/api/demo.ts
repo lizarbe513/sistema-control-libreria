@@ -10,6 +10,10 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  EstadoRespaldos,
+  ResultadoRespaldo,
+  Respaldo,
+  TipoRespaldo,
   ConsultaReporte,
   Reporte,
   TipoCsv,
@@ -127,6 +131,8 @@ interface Datos {
   encargoPagos?: { encargoId: number; metodo: Metodo; montoCent: number; fecha: string }[];
   plantillaWhatsapp?: string | null;
   margen?: number;
+  respaldoExterno?: string | null;
+  respaldoConservar?: number;
 }
 
 type EncargoDemo = Omit<Encargo, 'cliente' | 'telefono' | 'adelantoCent' | 'precioCent' | 'stock' | 'portada' | 'colorTapa' | 'formato' | 'categoria'>;
@@ -1124,5 +1130,119 @@ export class ApiDemo implements Api {
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     return nombreSugerido;
+  }
+
+  // ── respaldos (en la demostración son copias de los datos guardadas en el navegador) ──
+  private copias(): { archivo: string; fecha: string; tipo: TipoRespaldo; datos: string }[] {
+    try {
+      return JSON.parse(localStorage.getItem('demo-respaldos') ?? '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  private guardarCopias(c: ReturnType<ApiDemo['copias']>) {
+    try {
+      localStorage.setItem('demo-respaldos', JSON.stringify(c));
+    } catch {
+      throw new Error('No hay espacio en el navegador para otro respaldo de demostración');
+    }
+  }
+
+  private tomarCopia(tipo: TipoRespaldo): Respaldo {
+    const fecha = new Date().toISOString();
+    const archivo = `respaldo-${fecha.replace(/[-:]/g, '').slice(0, 15)}Z-${tipo}.zip`;
+    const datos = JSON.stringify(this.d);
+    const todas = [...this.copias(), { archivo, fecha, tipo, datos }];
+    // retención: los últimos 14 automáticos; manuales y de seguridad se quedan
+    const autos = todas.filter((x) => x.tipo === 'auto').sort((a, b) => b.fecha.localeCompare(a.fecha)).slice(14);
+    this.guardarCopias(todas.filter((x) => !autos.includes(x)).slice(-12));
+    return { archivo, ruta: archivo, bytes: datos.length, fecha, tipo };
+  }
+
+  async estadoRespaldos(): Promise<EstadoRespaldos> {
+    this.exigirDuena('ver los respaldos');
+    const interno = this.copias().map(({ archivo, fecha, tipo, datos }) => ({ archivo, ruta: archivo, bytes: datos.length, fecha, tipo })).sort((a, b) => b.fecha.localeCompare(a.fecha));
+    const externo = this.d.respaldoExterno ?? null;
+    return {
+      configuracion: { externo, conservar: this.d.respaldoConservar ?? 14, ultimoAuto: interno.find((r) => r.tipo === 'auto')?.fecha ?? null },
+      externoDisponible: !!externo,
+      carpetaInterna: 'Respaldos (demostración)',
+      interno,
+      externo: externo ? interno : [],
+    };
+  }
+
+  async configurarRespaldos(externo: string | null, conservar: number) {
+    this.exigirDuena('cambiar los respaldos');
+    if (conservar < 3 || conservar > 60) throw new Error('Conservar entre 3 y 60 respaldos');
+    this.d.respaldoExterno = externo;
+    this.d.respaldoConservar = conservar;
+    this.persistir();
+    return this.estadoRespaldos();
+  }
+
+  async crearRespaldo(destino?: string | null): Promise<ResultadoRespaldo> {
+    this.exigirDuena('hacer respaldos');
+    await espera(300);
+    void destino;
+    return { respaldo: this.tomarCopia('manual'), aviso: null };
+  }
+
+  async mostrarRespaldos() {
+    throw new Error('En la demostración los respaldos viven en el navegador');
+  }
+
+  async elegirRespaldo() {
+    return this.copias().sort((a, b) => b.fecha.localeCompare(a.fecha))[0]?.archivo ?? null;
+  }
+
+  async restaurarRespaldo(zip: string, contrasena: string) {
+    this.exigirDuena('restaurar un respaldo');
+    await espera(500);
+    const c = this.copias().find((x) => x.archivo === zip);
+    if (!c) throw new Error('No se pudo abrir ese archivo');
+    const datos = JSON.parse(c.datos) as Datos;
+    if (contrasena !== datos.contrasena) throw new Error('La contraseña maestra no es correcta');
+    this.tomarCopia('seguridad');
+    this.d = datos;
+    this.sesion = null;
+    this.persistir();
+    return this.estado();
+  }
+
+  async restaurarNuevo(zip: string, _carpeta: string, contrasena: string) {
+    await espera(500);
+    const c = this.copias().find((x) => x.archivo === zip);
+    if (!c) throw new Error('No se pudo abrir ese archivo');
+    const datos = JSON.parse(c.datos) as Datos;
+    if (contrasena !== datos.contrasena) throw new Error('La contraseña maestra no es correcta');
+    this.d = datos;
+    this.sesion = null;
+    this.persistir();
+    return this.estado();
+  }
+
+  async cambiarContrasena(actual: string, nueva: string) {
+    this.exigirDuena('cambiar la contraseña maestra');
+    await espera(500);
+    if (actual !== this.d.contrasena) throw new Error('La contraseña maestra no es correcta');
+    if ([...nueva].length < 8) throw new Error('La contraseña nueva debe tener al menos 8 caracteres');
+    this.tomarCopia('seguridad');
+    this.d.contrasena = nueva;
+    this.persistir();
+    return true;
+  }
+
+  async recuperarPin(id: number, contrasena: string, pinNuevo: string) {
+    await espera(400);
+    if (contrasena !== this.d.contrasena) throw new Error('La contraseña maestra no es correcta');
+    const u = this.d.usuarias.find((x) => x.id === id);
+    if (!u) throw new Error('No se encontró a esa persona');
+    if (u.rol !== 'duena') throw new Error('Restablecer ese PIN con la contraseña maestra: se lo cambia la Dueña');
+    this.validarPin(pinNuevo);
+    u.pin = pinNuevo;
+    this.fallos.delete(id);
+    this.persistir();
   }
 }

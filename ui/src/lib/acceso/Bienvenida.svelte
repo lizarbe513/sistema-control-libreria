@@ -3,14 +3,18 @@
   import { fly } from 'svelte/transition';
   import { api } from '../api';
   import { aplicarEstado, sesion } from '../sesion.svelte';
+  import { fuerzaContrasena, NIVELES_FUERZA } from '../seguridad';
   import AbrirCarpeta from './AbrirCarpeta.svelte';
   import MarcoAcceso from './MarcoAcceso.svelte';
+
+  import RestaurarRespaldo from './RestaurarRespaldo.svelte';
 
   type Paso = 'hola' | 'carpeta' | 'contrasena' | 'tienda' | 'duena';
   const PASOS: Paso[] = ['hola', 'carpeta', 'contrasena', 'tienda', 'duena'];
 
   let paso = $state<Paso>('hola');
   let existente = $state(false);
+  let restaurando = $state(false);
   let carpeta = $state(sesion.estado?.carpetaSugerida ?? '');
   let contrasena = $state('');
   let repetida = $state('');
@@ -24,18 +28,8 @@
 
   const indice = $derived(PASOS.indexOf(paso));
 
-  /** Fuerza aproximada: largo, mayúsculas/minúsculas, números y símbolos o espacios. */
-  const fuerza = $derived.by(() => {
-    const c = contrasena;
-    let p = 0;
-    if ([...c].length >= 8) p++;
-    if ([...c].length >= 12) p++;
-    if (/[a-zñáéíóú]/.test(c) && /[A-ZÑÁÉÍÓÚ]/.test(c)) p++;
-    if (/\d/.test(c)) p++;
-    if (/[^\p{L}\d]/u.test(c)) p++;
-    return p;
-  });
-  const NIVELES = ['Muy débil', 'Débil', 'Regular', 'Buena', 'Muy buena', 'Excelente'];
+  const fuerza = $derived(fuerzaContrasena(contrasena));
+  const NIVELES = NIVELES_FUERZA;
 
   const puedeSeguir = $derived.by(() => {
     switch (paso) {
@@ -100,6 +94,8 @@
 
 {#if existente}
   <AbrirCarpeta onVolver={() => (existente = false)} />
+{:else if restaurando}
+  <RestaurarRespaldo onVolver={() => (restaurando = false)} />
 {:else}
   <MarcoAcceso titulo={TITULOS[paso][0]} subtitulo={TITULOS[paso][1]} ancho={500}>
     <div class="progreso" aria-label={`Paso ${indice + 1} de ${PASOS.length}`}>
@@ -112,7 +108,8 @@
           <div class="ilustracion">📚🌸</div>
           <div class="acciones columna">
             <button class="btn btn-primario grande">Empezar</button>
-            <button type="button" class="enlace" onclick={() => (existente = true)}>Ya tengo una carpeta de datos (mudanza o restauración)</button>
+            <button type="button" class="enlace" onclick={() => (existente = true)}>Ya tengo una carpeta de datos (mudanza)</button>
+            <button type="button" class="enlace" onclick={() => (restaurando = true)}>Restaurar desde un respaldo (.zip)</button>
           </div>
         {:else if paso === 'carpeta'}
           <div class="campo">
