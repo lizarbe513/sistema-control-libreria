@@ -140,7 +140,7 @@
               <strong>{e.titulo}</strong>
               <span>{e.cliente} · {hace(e.creado)}</span>
             </div>
-            <span class="cuantos" style:background={ESTADOS[e.estado].color}>{ESTADOS[e.estado].emoji} {ESTADOS[e.estado].nombre}</span>
+            <span class="cuantos estado-enc" style:background={ESTADOS[e.estado].color}>{ESTADOS[e.estado].emoji} {ESTADOS[e.estado].nombre}</span>
           </button>
         {/each}
       {/if}
@@ -181,6 +181,12 @@
 </div>
 
 <style>
+  .estado-enc {
+    padding: 3px 9px;
+    border-radius: 999px;
+    color: var(--text) !important;
+    white-space: nowrap;
+  }
   .aviso-llego {
     margin: 0;
     padding: 8px 12px;

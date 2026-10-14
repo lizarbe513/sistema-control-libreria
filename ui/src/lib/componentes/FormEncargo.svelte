@@ -29,6 +29,9 @@
     return () => clearTimeout(t);
   });
 
+  // svelte-ignore state_referenced_locally
+  if (precarga.clienteId) api.fichaCliente(precarga.clienteId).then((f) => (cliente = f.cliente)).catch(() => {});
+
   // ── libro ──
   // svelte-ignore state_referenced_locally
   let modoLibro = $state<'inventario' | 'mano'>(precarga.libroId || !precarga.titulo ? 'inventario' : 'mano');
@@ -170,13 +173,13 @@
         {:else}
           <div class="dos">
             <label>Título<input bind:value={titulo} maxlength="200" placeholder="Los ríos profundos" /></label>
-            <label>Autor <small>(opcional)</small><input bind:value={autor} maxlength="120" placeholder="José María Arguedas" /></label>
+            <label><span>Autor <small>(opcional)</small></span><input bind:value={autor} maxlength="120" placeholder="José María Arguedas" /></label>
           </div>
         {/if}
       {/if}
       <div class="dos">
         <label>Cantidad<input type="number" min="1" max="999" bind:value={cantidad} /></label>
-        <label>Notas <small>(opcional)</small><input bind:value={notas} maxlength="300" placeholder="Edición de bolsillo, para el lunes…" /></label>
+        <label><span>Notas <small>(opcional)</small></span><input bind:value={notas} maxlength="300" placeholder="Edición de bolsillo, para el lunes…" /></label>
       </div>
     </section>
 

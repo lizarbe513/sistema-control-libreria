@@ -84,7 +84,7 @@
         <div class="dos">
           <label>Nombre<input bind:value={edicion.nombre} maxlength="80" /></label>
           <label>Teléfono / WhatsApp<input bind:value={edicion.telefono} inputmode="tel" placeholder="987 654 321" /></label>
-          <label>Correo <small>(opcional)</small><input bind:value={edicion.correo} type="email" placeholder="nombre@correo.com" /></label>
+          <label><span>Correo <small>(opcional)</small></span><input bind:value={edicion.correo} type="email" placeholder="nombre@correo.com" /></label>
           <label>
             Tipo de cliente
             <select bind:value={edicion.tipoClienteId}>
@@ -96,7 +96,7 @@
         <label>Notas<textarea bind:value={edicion.notas} rows="2" maxlength="500" placeholder="Le gustan las novelas históricas…"></textarea></label>
         <div class="acciones">
           {#if !creando && ficha}
-            <button type="button" class="btn btn-blanco chico" onclick={() => (encargosUI.nuevo = {})}>📦 Nuevo encargo</button>
+            <button type="button" class="btn btn-blanco chico" onclick={() => (encargosUI.nuevo = { clienteId: edicion?.id })}>📦 Nuevo encargo</button>
           {/if}
           <button class="btn btn-primario chico" disabled={guardando || !edicion.nombre.trim()}>{guardando ? 'Guardando…' : 'Guardar ficha'}</button>
         </div>

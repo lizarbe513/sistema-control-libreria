@@ -3,6 +3,7 @@ import { api, type Encargo, type EstadoEncargo } from './api';
 import { app } from './estado.svelte';
 
 export interface Precarga {
+  clienteId?: number | null;
   titulo?: string;
   autor?: string;
   libroId?: number | null;
@@ -23,7 +24,9 @@ export function encargosCambio() {
 
 /** «¿Lo encargamos?»: abre el formulario en la vista Encargos, con lo que ya se sabe. */
 export function abrirNuevoEncargo(p: Precarga = {}) {
-  encargosUI.nuevo = p;
+  // lo que se buscó suele venir en minúsculas: «rayuela» → «Rayuela»
+  const t = p.titulo?.trim();
+  encargosUI.nuevo = { ...p, titulo: t ? t[0].toLocaleUpperCase('es') + t.slice(1) : t };
   app.fichaMovil = false;
   app.vista = 'encargos';
 }

@@ -78,7 +78,9 @@
               <div class="quien">
                 <strong>{e.cliente}</strong>
                 <small>
-                  {#if carta.tipo === 'coincidencia'}pidió «{e.titulo}» · {/if}{e.telefono || 'sin teléfono'}{#if e.adelantoCent} · adelanto {soles(e.adelantoCent)}{/if}
+                  {[carta.tipo === 'coincidencia' ? `pidió «${e.titulo}»` : '', e.telefono || 'sin teléfono', e.adelantoCent ? `adelanto ${soles(e.adelantoCent)}` : '']
+                    .filter(Boolean)
+                    .join(' · ')}
                 </small>
               </div>
               <span class="estado" style:background={ESTADOS[e.estado].color}>{ESTADOS[e.estado].emoji} {ESTADOS[e.estado].nombre}</span>

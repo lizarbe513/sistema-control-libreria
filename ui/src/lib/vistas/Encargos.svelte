@@ -37,14 +37,27 @@
   /** Portada para la tarjeta: la guardada, o una generada con el color de tapa (o neutra si no hay libro). */
   function portadaDe(e: Encargo): string {
     if (e.portada) return api.urlPortada(e.portada);
-    return miniatura({
+    const l: Libro = {
       id: e.libroId ?? -e.id,
       titulo: e.titulo,
       autor: e.autor,
-      tapa: e.colorTapa ?? '#d9c7d0',
-      formato: (e.formato as Formato) ?? 'normal',
+      editorial: '',
+      anio: null,
       categoria: (e.categoria as Libro['categoria']) ?? 'otros',
-    } as Libro);
+      precio: e.precioCent ?? 0,
+      stock: e.stock ?? 0,
+      ubicacion: null,
+      tapa: e.colorTapa ?? '#C9A7B5',
+      formato: (e.formato as Formato) ?? 'normal',
+      sinopsis: '',
+      codigo: '',
+      isbn: null,
+      portada: null,
+      stockMinimo: 0,
+      costo: null,
+      etiquetas: [],
+    };
+    return miniatura(l);
   }
 
   async function mover(e: Encargo, a: EstadoEncargo) {
@@ -189,9 +202,9 @@
                   {#if e.autor}<small>{e.autor}</small>{/if}
                   <span class="cli">👤 {e.cliente}{#if e.cantidad > 1} · {e.cantidad} ej.{/if}</span>
                   <small class="meta">
-                    {hace(e.creado)}{#if e.adelantoCent} · adelanto {soles(e.adelantoCent)}{/if}{#if s != null && s > 0} · saldo {soles(s)}{/if}
-                    {#if !e.libroId} · <span class="sin">sin libro enlazado</span>{/if}
+                    {[hace(e.creado), e.adelantoCent ? `adelanto ${soles(e.adelantoCent)}` : '', s != null && s > 0 ? `saldo ${soles(s)}` : ''].filter(Boolean).join(' · ')}
                   </small>
+                  {#if !e.libroId}<small class="sin">Sin libro enlazado</small>{/if}
                   {#if e.notas}<small class="notas">📝 {e.notas}</small>{/if}
                 </div>
               </div>
