@@ -60,7 +60,7 @@
     try {
       escena = new EscenaTienda(canvas, contenedor, 'editor');
       // solo en desarrollo: permite a las pruebas automáticas apuntar a celdas concretas
-      if (import.meta.env.DEV) (window as unknown as { __escenaTienda: EscenaTienda }).__escenaTienda = escena;
+      if (import.meta.env.DEV) Object.assign(window, { __escenaTienda: escena, __tienda: tienda });
     } catch {
       sinWebGL = true;
     }
