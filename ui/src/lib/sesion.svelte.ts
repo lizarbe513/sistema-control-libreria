@@ -1,7 +1,7 @@
 // Sesión: qué fase muestra la app (configurar, desbloquear, entrar o la tienda) y quién atiende.
 import { api, type EstadoInicial, type Usuaria } from './api';
 import { aplicarPreferencias, app, avisar, olvidarPreferencias, registrarGuardadoPreferencias } from './estado.svelte';
-import { prepararInventario } from './inventario.svelte';
+import { borrador, prepararInventario } from './inventario.svelte';
 import { tienda } from './tienda/tienda.svelte';
 
 export const sesion = $state({
@@ -65,6 +65,7 @@ export async function cerrarSesion() {
   }
   await api.cerrarSesion();
   olvidarPreferencias();
+  borrador.datos = null;
   sesion.usuaria = null;
   app.usuario = '';
   app.vista = 'inicio';

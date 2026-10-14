@@ -1,5 +1,6 @@
 <script lang="ts">
   // Inventario: lista de libros con filtros, alta, edición y stock.
+  import { onDestroy } from 'svelte';
   import { api, type Filtros } from '../api';
   import FormLibro from '../componentes/FormLibro.svelte';
   import Icono from '../componentes/Icono.svelte';
@@ -10,6 +11,9 @@
   import { esDuena } from '../sesion.svelte';
   import { resolver, textoCorto } from '../tienda/modelo';
   import { tienda } from '../tienda/tienda.svelte';
+
+  // al salir de «Libros» no se vuelve a abrir solo el cajón; el borrador queda guardado en memoria
+  onDestroy(() => (app.editar = null));
 
   let consulta = $state('');
   let categoria = $state('');

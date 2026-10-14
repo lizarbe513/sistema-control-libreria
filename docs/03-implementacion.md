@@ -81,6 +81,9 @@ errores de tipeo, y el índice en memoria ya cumple el objetivo con margen.
 - **El stock solo cambia con movimientos registrados:** alta, ingreso o ajuste. Las ventas y anulaciones llegarán
   en el hito 3. Nunca queda negativo.
 - **Las bajas no borran:** el libro deja de aparecer, su historial se conserva y su ISBN se libera.
+- **Borrador del libro nuevo:** si se sale del cajón sin guardar (Esc, clic afuera, Cancelar o cambiando de vista),
+  lo escrito se conserva en memoria y se recupera al volver («Empezar de cero» lo descarta). No se escribe a disco y
+  se olvida al cerrar la sesión.
 - **Ubicación:** estante + tramo + repisa, una referencia blanda a «Mi tienda». Si el compartimento deja de
   existir, la ficha muestra «Por revisar».
 - **Búsqueda en internet por título o autor** (para libros sin ISBN):
@@ -97,6 +100,8 @@ errores de tipeo, y el índice en memoria ya cumple el objetivo con margen.
   Sin portada se usa la generada del prototipo.
 
 ### Tienda en bloques
+- **Visor de ubicación** (ficha del libro y cajón de «Libros»): se gira arrastrando, **Espacio + clic derecho** mueve la
+  maqueta, las flechas la recorren y la rueda hace zoom. Al elegir un estante en las listas, la cámara vuela a enfocarlo.
 - **Divisiones verticales (tramos):** cada estante tiene «− N +» tramos (1 = repisas corridas, sin divisiones), en
   «Organizar» y en la tarjeta del estante. Con un solo tramo, la ubicación de un libro es «Tramo 1».
 - **Repisas:** la tabla de madera se ve gruesa y sobresale al frente, y los libros se apoyan en ella.

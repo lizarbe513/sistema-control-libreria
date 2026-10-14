@@ -1,6 +1,6 @@
 // Inventario en la interfaz: categorías, conversión de libros a la vista y un contador de cambios
 // (las vistas lo observan para volver a pedir datos cuando se guarda un libro).
-import { api, type CategoriaApi, type LibroApi } from './api';
+import { api, type CategoriaApi, type LibroApi, type ResultadoLinea, type UbicacionApi } from './api';
 import { aVista, type Libro } from './datos';
 
 export const inventario = $state({
@@ -33,3 +33,28 @@ export function aCentimos(texto: string): number | null {
 
 /** Céntimos → texto para un campo de precio («35.50»). */
 export const aSoles = (cent: number) => (cent / 100).toFixed(2);
+
+/** Lo que estaba escribiendo la usuaria en el formulario de «Nuevo libro» (para no perderlo al salir). */
+export interface BorradorLibro {
+  modo: 'linea' | 'isbn' | 'manual';
+  elegido: ResultadoLinea | null;
+  isbn: string;
+  titulo: string;
+  autor: string;
+  editorial: string;
+  anio: string;
+  sinopsis: string;
+  categoria: string;
+  formato: 'normal' | 'grueso' | 'infantil' | 'delgado';
+  precio: string;
+  costo: string;
+  stock: string;
+  stockMinimo: string;
+  etiquetas: string;
+  ubicacion: UbicacionApi | null;
+  portadaPendiente: { tipo: 'url' | 'archivo'; valor: string } | null;
+  quitarPortada: boolean;
+}
+
+/** Vive solo en memoria: se pierde al cerrar la app o la sesión (no se escribe a disco). */
+export const borrador = $state<{ datos: BorradorLibro | null }>({ datos: null });

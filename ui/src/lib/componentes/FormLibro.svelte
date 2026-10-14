@@ -1,12 +1,12 @@
 <script lang="ts">
   // Cajón para agregar o editar un libro: ISBN con datos desde internet, portada, precios, stock y
   // la ubicación elegida tocando la tienda 3D.
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { api, type Formato, type LibroApi, type ResultadoLinea, type Sugerencia, type UbicacionApi } from '../api';
   import { CATEGORIAS, soles, type Libro } from '../datos';
   import { avisar } from '../estado.svelte';
-  import { aCentimos, aSoles, inventario, inventarioCambio, vista } from '../inventario.svelte';
+  import { aCentimos, aSoles, borrador, inventario, inventarioCambio, vista, type BorradorLibro } from '../inventario.svelte';
   import { esDuena } from '../sesion.svelte';
   import { compartimentos, infoTipo, resolver, textoPosicion, tipoDeEstante } from '../tienda/modelo';
   import { tienda } from '../tienda/tienda.svelte';
@@ -21,30 +21,33 @@
 
   // campos (texto, tal como se escriben). El cajón se crea de nuevo para cada libro: se toma su valor inicial.
   const ini = untrack(() => libro);
-  let isbn = $state(ini?.isbn ?? '');
-  let titulo = $state(ini?.titulo ?? '');
-  let autor = $state(ini?.autor ?? '');
-  let editorial = $state(ini?.editorial ?? '');
-  let anio = $state(ini?.anio ? String(ini.anio) : '');
-  let sinopsis = $state(ini?.sinopsis ?? '');
-  let categoria = $state<string>(ini?.categoria ?? 'literarias');
-  let formato = $state<Formato>(ini?.formato ?? 'normal');
-  let precio = $state(ini ? aSoles(ini.precio) : '');
-  let costo = $state(ini?.costo != null ? aSoles(ini.costo) : '');
-  let stock = $state('1');
-  let stockMinimo = $state(String(ini?.stockMinimo ?? 1));
-  let etiquetas = $state(ini?.etiquetas.join(', ') ?? '');
-  let ubicacion = $state<UbicacionApi | null>(ini?.ubicacion ? { ...ini.ubicacion } : null);
+  // un libro nuevo recupera lo que se estaba escribiendo si se salió del cajón sin guardar
+  const rec = untrack(() => (libro ? null : borrador.datos));
+  let restaurado = $state(!!rec);
+  let isbn = $state(rec?.isbn ?? ini?.isbn ?? '');
+  let titulo = $state(rec?.titulo ?? ini?.titulo ?? '');
+  let autor = $state(rec?.autor ?? ini?.autor ?? '');
+  let editorial = $state(rec?.editorial ?? ini?.editorial ?? '');
+  let anio = $state(rec?.anio ?? (ini?.anio ? String(ini.anio) : ''));
+  let sinopsis = $state(rec?.sinopsis ?? ini?.sinopsis ?? '');
+  let categoria = $state<string>(rec?.categoria ?? ini?.categoria ?? 'literarias');
+  let formato = $state<Formato>(rec?.formato ?? ini?.formato ?? 'normal');
+  let precio = $state(rec?.precio ?? (ini ? aSoles(ini.precio) : ''));
+  let costo = $state(rec?.costo ?? (ini?.costo != null ? aSoles(ini.costo) : ''));
+  let stock = $state(rec?.stock ?? '1');
+  let stockMinimo = $state(rec?.stockMinimo ?? String(ini?.stockMinimo ?? 1));
+  let etiquetas = $state(rec?.etiquetas ?? ini?.etiquetas.join(', ') ?? '');
+  let ubicacion = $state<UbicacionApi | null>(rec ? (rec.ubicacion ? { ...rec.ubicacion } : null) : ini?.ubicacion ? { ...ini.ubicacion } : null);
 
   // portada: la actual, o una pendiente (de internet o de un archivo) que se guarda junto con el libro
-  let portadaPendiente = $state<{ tipo: 'url' | 'archivo'; valor: string } | null>(null);
-  let quitarPortada = $state(false);
+  let portadaPendiente = $state<{ tipo: 'url' | 'archivo'; valor: string } | null>(rec?.portadaPendiente ?? null);
+  let quitarPortada = $state(rec?.quitarPortada ?? false);
   const vistaPortada = $derived(portadaPendiente?.valor ?? (quitarPortada ? null : ini?.portada) ?? null);
 
   // cómo se empieza un libro nuevo: por título/autor en internet (lo habitual), por ISBN, o a mano
   type Modo = 'linea' | 'isbn' | 'manual';
-  let modo = $state<Modo>('linea');
-  let elegido = $state<ResultadoLinea | null>(null);
+  let modo = $state<Modo>(rec?.modo ?? 'linea');
+  let elegido = $state<ResultadoLinea | null>(rec?.elegido ?? null);
 
   /** Un resultado de la búsqueda en línea: llena el formulario y deja su portada pendiente. */
   function elegirResultado(r: ResultadoLinea) {
@@ -68,6 +71,7 @@
     }
   }
 
+  let enfoque = $state(0); // sube cada vez que se elige con las listas: la cámara vuela al estante
   let buscandoIsbn = $state(false);
   let sugerencia = $state<Sugerencia | null>(null);
   let guardando = $state(false);
@@ -84,6 +88,40 @@
     return t && infoTipo(t).guardaLibros;
   }));
   const tramosDe = $derived(ubicacion ? compartimentos(tienda.datos, ubicacion.estante) : []);
+
+  // ── borrador: si se sale sin guardar, lo escrito se conserva para la próxima vez ──
+  let guardadoOk = false;
+
+  const hayContenido = () =>
+    !!(titulo.trim() || autor.trim() || editorial.trim() || isbn.trim() || sinopsis.trim() || precio.trim() || costo.trim() || etiquetas.trim() || anio.trim()) ||
+    !!ubicacion ||
+    !!portadaPendiente;
+
+  onDestroy(() => {
+    if (libro || guardadoOk || !hayContenido()) return;
+    const d: BorradorLibro = $state.snapshot({
+      modo, elegido, isbn, titulo, autor, editorial, anio, sinopsis, categoria, formato, precio, costo, stock, stockMinimo, etiquetas, ubicacion, portadaPendiente, quitarPortada,
+    });
+    borrador.datos = d;
+  });
+
+  /** «Empezar de cero»: vacía el formulario y olvida el borrador. */
+  function empezarDeCero() {
+    borrador.datos = null;
+    restaurado = false;
+    modo = 'linea';
+    elegido = null;
+    sugerencia = null;
+    isbn = titulo = autor = editorial = anio = sinopsis = precio = costo = etiquetas = '';
+    categoria = 'literarias';
+    formato = 'normal';
+    stock = '1';
+    stockMinimo = '1';
+    ubicacion = null;
+    portadaPendiente = null;
+    quitarPortada = false;
+    error = '';
+  }
 
   async function buscarDatos() {
     error = '';
@@ -160,6 +198,8 @@
       } catch (x) {
         avisar(`El libro se guardó, pero la portada no: ${(x as Error).message}`);
       }
+      guardadoOk = true;
+      borrador.datos = null;
       inventarioCambio();
       avisar(nuevo ? `«${l.titulo}» agregado 📚` : 'Cambios guardados');
       onGuardado?.(vista(l));
@@ -215,6 +255,13 @@
   </header>
 
   <form onsubmit={guardar}>
+    {#if nuevo && restaurado}
+      <div class="borrador">
+        <span>📝 Recuperé lo que estabas escribiendo{titulo ? `: «${titulo}»` : ''}.</span>
+        <button type="button" class="mini" onclick={empezarDeCero}>Empezar de cero</button>
+      </div>
+    {/if}
+
     {#if nuevo}
       <div class="modos" role="tablist" aria-label="Cómo empezar">
         <button type="button" role="tab" aria-selected={modo === 'linea'} class:activo={modo === 'linea'} onclick={() => (modo = 'linea')}>🔎 Buscar por título o autor</button>
@@ -328,7 +375,7 @@
           <span class="atenuado">Toca el estante en la tienda (o elígelo en la lista).</span>
         {/if}
       </div>
-      <Tienda3D ubicacion={resuelta} alto={260} onElegir={(u) => (ubicacion = { estante: u.estante, tramo: u.tramo, repisa: u.repisa })} />
+      <Tienda3D ubicacion={resuelta} alto={260} enfocar={enfoque} onElegir={(u) => (ubicacion = { estante: u.estante, tramo: u.tramo, repisa: u.repisa })} />
       <div class="fila manual">
         <select
           aria-label="Estante"
@@ -336,18 +383,37 @@
           onchange={(e) => {
             const id = e.currentTarget.value;
             ubicacion = id ? { estante: id, tramo: 1, repisa: 1 } : null;
+            if (id) enfoque++;
           }}
         >
           <option value="">Sin ubicación</option>
           {#each muebles as m (m.id)}<option value={m.id}>{m.titulo}{m.tema ? ` · ${m.tema}` : ''}</option>{/each}
         </select>
         {#if ubicacion && tramosDe.length > 1}
-          <select aria-label="Tramo" bind:value={ubicacion.tramo}>
+          <select
+            aria-label="Tramo"
+            value={ubicacion.tramo}
+            onchange={(e) => {
+              if (!ubicacion) return;
+              const n = Number(e.currentTarget.value);
+              const repisas = tramosDe[n - 1]?.repisas.length ?? 1;
+              ubicacion = { ...ubicacion, tramo: n, repisa: Math.min(ubicacion.repisa, repisas) };
+              enfoque++;
+            }}
+          >
             {#each tramosDe as _, i}<option value={i + 1}>Tramo {i + 1}</option>{/each}
           </select>
         {/if}
         {#if ubicacion && (tramosDe[ubicacion.tramo - 1]?.repisas.length ?? 0) > 1}
-          <select aria-label="Repisa" bind:value={ubicacion.repisa}>
+          <select
+            aria-label="Repisa"
+            value={ubicacion.repisa}
+            onchange={(e) => {
+              if (!ubicacion) return;
+              ubicacion = { ...ubicacion, repisa: Number(e.currentTarget.value) };
+              enfoque++;
+            }}
+          >
             {#each tramosDe[ubicacion.tramo - 1].repisas as _, i}<option value={i + 1}>Repisa {i + 1}</option>{/each}
           </select>
         {/if}
@@ -499,6 +565,17 @@
     background: var(--surface);
     color: var(--primary-strong);
     box-shadow: var(--sombra-suave);
+  }
+  .borrador {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--yellow) 60%, var(--surface));
+    font-size: 13px;
+    font-weight: 700;
   }
   .elegido {
     display: flex;

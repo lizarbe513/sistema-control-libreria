@@ -105,10 +105,12 @@ export class EscenaTienda {
         RIGHT: THREE.MOUSE.ROTATE,
       };
     } else {
-      this.controles.enablePan = false;
+      // visor de ubicación: gira con el clic izquierdo o derecho y se mueve con Espacio + clic derecho (como en el editor)
+      this.controles.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
       this.controles.maxDistance = 60;
     }
-    if (modo === 'editor') {
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    {
       // Shift + rueda: sube o baja el punto de vista (útil para recorrer la parte alta)
       canvas.addEventListener(
         'wheel',

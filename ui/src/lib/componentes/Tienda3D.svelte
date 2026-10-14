@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { app } from '../estado.svelte';
   import { EscenaTienda } from '../tienda/escena';
   import { infoTipo, ruta, ubicacionDe, type UbicacionResuelta } from '../tienda/modelo';
@@ -11,11 +11,14 @@
     ubicacion,
     onElegir,
     alto = 230,
+    enfocar = 0,
   }: {
     ubicacion: UbicacionResuelta | null;
     /** Modo «elegir»: tocar un estante, caja, mesa o puerta devuelve su compartimento. */
     onElegir?: (u: UbicacionResuelta) => void;
     alto?: number;
+    /** Cada vez que cambia (y no es 0), la cámara vuela a enfocar la ubicación. Sirve para las listas desplegables. */
+    enfocar?: number;
   } = $props();
   const eligiendo = $derived(!!onElegir);
 
@@ -29,6 +32,8 @@
     if (plano) return;
     try {
       escena = new EscenaTienda(canvas, contenedor, 'visor');
+      // solo en desarrollo: permite a las pruebas automáticas leer la cámara
+      if (import.meta.env.DEV) Object.assign(window, { __visorTienda: escena });
     } catch {
       sinWebGL = true;
     }
@@ -91,16 +96,55 @@
     if (u) onElegir?.(u);
   }
 
+  // al elegir con las listas, la cámara se mueve al estante (al tocar en el 3D no: la usuaria ya está mirando)
+  $effect(() => {
+    if (!enfocar || !escena) return;
+    untrack(() => {
+      if (ubicacion) escena?.resaltar(ubicacion.bloques, ubicacion.estante, true);
+    });
+  });
+
+  // ── moverse por la maqueta: Espacio + clic derecho desplaza, flechas recorren (con el mouse encima) ──
+  let encima = false;
+  function tecla(e: KeyboardEvent) {
+    if (!encima || !escena || e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+    if (e.code === 'Space') {
+      e.preventDefault(); // sin scroll ni clic en el botón enfocado
+      escena.paneo(true);
+    } else if (e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const paso = e.shiftKey ? 2.5 : 1;
+      escena.desplazar(e.key === 'ArrowUp' ? paso : e.key === 'ArrowDown' ? -paso : 0, e.key === 'ArrowRight' ? paso : e.key === 'ArrowLeft' ? -paso : 0);
+    }
+  }
+  function soltarTecla(e: KeyboardEvent) {
+    if (e.code === 'Space') escena?.paneo(false);
+  }
+
   function recentrar() {
     if (ubicacion) escena?.resaltar(ubicacion.bloques, ubicacion.estante);
     else escena?.vistaGeneral();
   }
 </script>
 
+<svelte:window onkeydown={tecla} onkeyup={soltarTecla} onblur={() => escena?.paneo(false)} />
+
 {#if plano}
   <MapaTienda {ubicacion} />
 {:else}
-  <div class="visor" bind:this={contenedor} style:height="{alto}px" class:eligiendo>
+  <div
+    class="visor"
+    bind:this={contenedor}
+    style:height="{alto}px"
+    class:eligiendo
+    onpointerenter={() => (encima = true)}
+    onpointerleave={() => {
+      encima = false;
+      escena?.paneo(false);
+    }}
+    role="group"
+    aria-label="Tienda en 3D"
+  >
     <canvas
       bind:this={canvas}
       aria-label={eligiendo ? 'Tienda en 3D: toca dónde va el libro' : 'Tienda en 3D con el estante resaltado'}
@@ -113,7 +157,7 @@
       }}
     ></canvas>
     <button class="recentrar" onclick={recentrar} aria-label="Volver a centrar" title="Volver a centrar"><Icono nombre="pin" tam={16} /></button>
-    <span class="pista">{eligiendo ? pista || 'Toca el estante, la caja, la mesa o la puerta · arrastra para girar' : 'Arrastra para girar la tienda'}</span>
+    <span class="pista">{eligiendo ? pista || 'Toca un estante, caja, mesa o puerta · Espacio + clic derecho: mover' : 'Arrastra: girar · Espacio + clic derecho: mover'}</span>
   </div>
 {/if}
 

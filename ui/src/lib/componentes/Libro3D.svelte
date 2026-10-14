@@ -129,8 +129,12 @@
     paginas.position.x = -w / 2 + TAPA + pw / 2;
     g.add(paginas);
 
+    // Las tapas empiezan donde termina el lomo (x = -w/2 + TAPA): si se solaparan con él compartirían el mismo
+    // plano en z = ±d/2 y las texturas parpadearían (z-fighting) a lo largo de la bisagra.
+    const wt = w - TAPA;
+
     // contratapa
-    const atras = new THREE.Mesh(new THREE.BoxGeometry(w, h, TAPA), [
+    const atras = new THREE.Mesh(new THREE.BoxGeometry(wt, h, TAPA), [
       tela(),
       tela(),
       tela(),
@@ -138,7 +142,7 @@
       tela(),
       new THREE.MeshStandardMaterial({ map: texturaCanvas(contratapa(l)), roughness: 0.6 }),
     ]);
-    atras.position.z = -d / 2 + TAPA / 2;
+    atras.position.set(TAPA / 2, 0, -d / 2 + TAPA / 2);
     g.add(atras);
 
     // lomo
@@ -155,10 +159,10 @@
 
     // tapa delantera con bisagra en el lomo
     const b = new THREE.Group();
-    b.position.set(-w / 2, 0, d / 2 - TAPA / 2);
+    b.position.set(-w / 2 + TAPA, 0, d / 2 - TAPA / 2);
     const matPortada = new THREE.MeshStandardMaterial({ map: texturaCanvas(portada(l)), roughness: 0.55 });
     if (l.portada) ponerPortadaReal(l.portada, matPortada, l.id);
-    const frente = new THREE.Mesh(new THREE.BoxGeometry(w, h, TAPA), [
+    const frente = new THREE.Mesh(new THREE.BoxGeometry(wt, h, TAPA), [
       tela(),
       tela(),
       tela(),
@@ -166,7 +170,7 @@
       matPortada,
       new THREE.MeshStandardMaterial({ color: new THREE.Color(tono(l.tapa, 0.8)), roughness: 0.9 }),
     ]);
-    frente.position.x = w / 2;
+    frente.position.x = wt / 2;
     b.add(frente);
     g.add(b);
 
