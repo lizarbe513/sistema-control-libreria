@@ -52,8 +52,6 @@ export function crearAvatar(nombre: string): Avatar {
   cuerpo.add(malla(new THREE.CylinderGeometry(0.2, 0.22, 0.5, 16), blusa, 0, 1.75, 0));
   cuerpo.add(malla(new THREE.CylinderGeometry(0.21, 0.21, 0.08, 16), vestido, 0, 1.52, 0)); // cinturón
   cuerpo.add(malla(new THREE.CylinderGeometry(0.07, 0.08, 0.1, 10), piel, 0, 2.05, 0));
-  // mandil
-  cuerpo.add(malla(new THREE.BoxGeometry(0.28, 0.5, 0.02), blusa, 0, 1.25, 0.37));
 
   // brazos (pivote en el hombro)
   const brazo = (lado: number) => {

@@ -218,9 +218,16 @@
     seleccionado = null;
     escena.fijarCursor(null);
     info = null;
-    escena.iniciarCaminar(app.usuario);
+    if (!escena.iniciarCaminar(app.usuario)) {
+      avisar('No hay espacio libre para aparecer: quita algún bloque de la entrada');
+      return;
+    }
     caminando = true;
     primera = false;
+  }
+
+  function volverAEntrada() {
+    if (!escena?.volverAEntrada()) avisar('No hay espacio libre en la entrada');
   }
 
   function dejarDeCaminar() {
@@ -351,6 +358,7 @@
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     if (caminando) {
       if (e.code === 'Escape' || e.code === 'KeyG') dejarDeCaminar();
+      else if (e.code === 'KeyR') volverAEntrada();
       else if (e.code === 'KeyC') {
         escena?.alternarPrimeraPersona();
         primera = escena?.enPrimeraPersona ?? false;
@@ -512,9 +520,10 @@
             📍 <strong>{estanteCerca.titulo}</strong>{#if estanteCerca.tema} · {estanteCerca.tema}{/if}
           </div>
         {/if}
+        <button class="btn btn-blanco volver" onclick={volverAEntrada} title="Si te quedas atrapada (R)">↩ Volver a la entrada (R)</button>
         <p class="ayuda">
           🚶 <b>W A S D</b> o flechas caminar · <b>Espacio</b> saltar · <b>Shift</b> despacio · <b>Arrastrar</b> mirar · <b>Rueda</b> zoom ·
-          <b>C</b> {primera ? 'tercera' : 'primera'} persona · <b>Esc</b> salir
+          <b>C</b> {primera ? 'tercera' : 'primera'} persona · <b>R</b> volver a la entrada · <b>Esc</b> salir
         </p>
       {:else}
         <Hotbar bind:ranuras bind:elegida bind:modo bind:relleno {destello} onInventario={() => (inventario = true)} />
@@ -665,6 +674,10 @@
     align-items: center;
     gap: 6px;
     pointer-events: none;
+  }
+  .volver {
+    pointer-events: auto;
+    font-size: 13px;
   }
   .aviso-cerca {
     padding: 8px 18px;

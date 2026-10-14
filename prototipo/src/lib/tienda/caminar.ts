@@ -54,6 +54,9 @@ export class Caminante {
   /** Hacia dónde mira el cuerpo (radianes, 0 = +z). */
   giro = Math.PI;
 
+  /** Punto de aparición preferido (al que vuelve con «volver a la entrada»). */
+  readonly inicio: [number, number];
+
   private idx = new Map<string, Bloque>();
   private ancho = 0;
   private fondo = 0;
@@ -65,14 +68,77 @@ export class Caminante {
   ) {
     this.x = x;
     this.z = z;
+    this.inicio = [x, z];
     this.actualizar(t);
   }
 
-  /** Reconstruye el mapa de colisión (si la tienda cambió). */
+  /** ¿Está dentro de un bloque o fuera de la tienda? (no puede moverse así). */
+  get atrapada() {
+    return this.choca(this.x, this.y, this.z);
+  }
+
+  /** Reconstruye el mapa de colisión (si la tienda cambió). Si un bloque cae sobre ella, la reubica. */
   actualizar(t: Tienda) {
     this.idx = indice(t.bloques);
     this.ancho = t.ancho;
     this.fondo = t.fondo;
+    if (this.atrapada) this.rescatar();
+  }
+
+  /**
+   * El lugar libre más cercano a (x, z): recorre las celdas en anillos crecientes y devuelve el centro de la
+   * primera que cabe (en el piso, o de pie sobre algo si se pasa una altura). null si no hay ningún lugar.
+   */
+  libreMasCercano(x: number, z: number, y0 = 0): [number, number, number] | null {
+    const cx0 = Math.floor(x);
+    const cz0 = Math.floor(z);
+    const alturas = y0 > 0.01 ? [y0, 0] : [0];
+    const maxR = Math.max(this.ancho, this.fondo);
+    for (let r = 0; r <= maxR; r++) {
+      let mejor: [number, number, number] | null = null;
+      let dmin = Infinity;
+      for (let dx = -r; dx <= r; dx++)
+        for (let dz = -r; dz <= r; dz++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue; // solo el borde del anillo
+          const px = cx0 + dx + 0.5;
+          const pz = cz0 + dz + 0.5;
+          if (px < 0 || pz < 0 || px > this.ancho || pz > this.fondo) continue;
+          for (const yy of alturas) {
+            if (this.choca(px, yy, pz)) continue;
+            if (yy > 0 && !this.choca(px, yy - 0.03, pz)) continue; // en el aire: no vale
+            const d = Math.hypot(px - x, pz - z) + (yy > 0 ? 0 : 0.01);
+            if (d < dmin) {
+              dmin = d;
+              mejor = [px, yy, pz];
+            }
+            break;
+          }
+        }
+      if (mejor) return mejor;
+    }
+    return null;
+  }
+
+  /** Se saca del bloque donde quedó metida: al lugar libre más cercano (o, si no hay, al punto de aparición). */
+  rescatar(): boolean {
+    const l = this.libreMasCercano(this.x, this.z, this.y) ?? this.libreMasCercano(this.inicio[0], this.inicio[1]);
+    if (!l) return false;
+    [this.x, this.y, this.z] = l;
+    this.vy = 0;
+    this.suelo = true;
+    return true;
+  }
+
+  /** «Volver a la entrada»: la salida de los huecos cerrados. */
+  volverAlInicio(): boolean {
+    const l = this.libreMasCercano(this.inicio[0], this.inicio[1]);
+    if (!l) return false;
+    [this.x, this.y, this.z] = l;
+    this.vy = 0;
+    this.suelo = true;
+    this.rapidez = 0;
+    this.giro = Math.PI;
+    return true;
   }
 
   private altura(b: Bloque, wx: number, wz: number) {
@@ -123,6 +189,7 @@ export class Caminante {
 
   paso(dt: number, e: Entrada) {
     dt = Math.min(dt, 0.05); // el llamador ya la divide en subpasos
+    if (this.atrapada) this.rescatar(); // un bloque apareció encima de ella
     const vel = e.lento ? 1.9 : 4.4;
     const [dx, dz] = e.dir;
     const mag = Math.hypot(dx, dz);

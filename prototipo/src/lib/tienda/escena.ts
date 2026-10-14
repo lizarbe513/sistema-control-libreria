@@ -494,10 +494,13 @@ export class EscenaTienda {
   }
 
   /** La bibliotecaria aparece en la vereda, al centro de la fachada, mirando hacia adentro. */
-  iniciarCaminar(nombre: string) {
+  iniciarCaminar(nombre: string): boolean {
     const t = this.tienda;
-    if (!t || this.caminante) return;
-    this.caminante = new Caminante(t, t.ancho / 2 + 0.5, t.fachada + 2.5);
+    if (!t || this.caminante) return false;
+    const c = new Caminante(t, t.ancho / 2 + 0.5, t.fachada + 2.5);
+    // si hay un bloque justo donde debía aparecer, aparece en el lugar libre más cercano
+    if (c.atrapada && !c.rescatar()) return false;
+    this.caminante = c;
     this.avatar = crearAvatar(nombre);
     this.escena.add(this.avatar.grupo);
     this.yaw = 0;
@@ -511,6 +514,20 @@ export class EscenaTienda {
     this.paso(0.001);
     this.camara.position.copy(this.posCamara());
     this.sucio = true;
+    return true;
+  }
+
+  /** La devuelve a la entrada (o al lugar libre más cercano), con la cámara detrás de ella. */
+  volverAEntrada(): boolean {
+    const c = this.caminante;
+    if (!c) return false;
+    const ok = c.volverAlInicio();
+    this.teclas.clear();
+    this.yaw = 0;
+    this.pitch = this.primera ? 0 : 0.4;
+    if (ok) this.camara.position.copy(this.posCamara());
+    this.sucio = true;
+    return ok;
   }
 
   /** Vuelve al editor, con la cámara arriba de donde estaba la bibliotecaria. */
