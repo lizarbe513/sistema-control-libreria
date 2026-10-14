@@ -31,6 +31,7 @@ export class EscenaTienda {
   private grupo = new THREE.Group();
   private mallas: THREE.InstancedMesh[] = [];
   private extras = new THREE.Group(); // carteles y halos (se rehacen en cada carga)
+  private etiquetas = new THREE.Group(); // números de tramo / repisa mientras se organiza un estante
   private superficies: THREE.Mesh[] = []; // piso, vereda y paredes (apuntables)
   private fijos = new THREE.Group();
   private texturasFijas: THREE.Texture[] = [];
@@ -42,7 +43,6 @@ export class EscenaTienda {
   private cursor: THREE.LineSegments;
   private cursorRelleno: THREE.Mesh;
   private seleccion: THREE.LineSegments;
-  private junta: THREE.Mesh;
   private resalte: THREE.Group;
   private pin: THREE.Group;
   private resaltado: { bloques: Bloque[]; estante?: string } | null = null;
@@ -115,7 +115,7 @@ export class EscenaTienda {
     const relleno = new THREE.DirectionalLight(0xffd3e0, 0.5);
     relleno.position.set(20, 8, -10);
     this.escena.add(relleno);
-    this.escena.add(this.fijos, this.grupo, this.extras);
+    this.escena.add(this.fijos, this.grupo, this.extras, this.etiquetas);
 
     // contorno del cursor (como en Minecraft) + caja tenue del relleno
     const aristas = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
@@ -130,10 +130,7 @@ export class EscenaTienda {
     this.seleccion = new THREE.LineSegments(aristas.clone(), new THREE.LineBasicMaterial({ color: '#F27A9B', depthTest: false, transparent: true }));
     this.seleccion.renderOrder = 9;
     this.seleccion.visible = false;
-    this.junta = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: '#F27A9B', depthTest: false, transparent: true, opacity: 0.9 }));
-    this.junta.renderOrder = 11;
-    this.junta.visible = false;
-    this.escena.add(this.cursor, this.cursorRelleno, this.seleccion, this.junta);
+    this.escena.add(this.cursor, this.cursorRelleno, this.seleccion);
 
     // resalte del compartimento buscado: caja brillante + bordes
     this.resalte = new THREE.Group();
@@ -612,6 +609,46 @@ export class EscenaTienda {
     fill.opacity = modo === 'normal' ? 0.22 : modo === 'borrar' ? 0.25 : 0.14;
   }
 
+  /** Números flotantes sobre cada compartimento (se quitan con una lista vacía). */
+  fijarEtiquetas(lista: { texto: string; bloques: Bloque[]; color: string; activa?: boolean }[]) {
+    this.sucio = true;
+    for (const o of [...this.etiquetas.children]) {
+      this.etiquetas.remove(o);
+      const sp = o as THREE.Sprite;
+      sp.material.map?.dispose();
+      sp.material.dispose();
+    }
+    for (const it of lista) {
+      if (!it.bloques.length) continue;
+      const { min, max } = limites(it.bloques);
+      const rot = it.bloques[0].rot;
+      const [fx, fz] = FRENTE[rot] ?? [0, 1];
+      const c = document.createElement('canvas');
+      c.width = 160;
+      c.height = 64;
+      const x = c.getContext('2d')!;
+      x.fillStyle = it.color;
+      x.beginPath();
+      x.roundRect(4, 4, 152, 56, 28);
+      x.fill();
+      x.strokeStyle = it.activa ? '#fff' : 'rgba(255,255,255,0.8)';
+      x.lineWidth = it.activa ? 7 : 4;
+      x.stroke();
+      x.fillStyle = '#fff';
+      x.font = '800 30px Nunito, sans-serif';
+      x.textAlign = 'center';
+      x.textBaseline = 'middle';
+      x.fillText(it.texto, 80, 34);
+      const tx = new THREE.CanvasTexture(c);
+      tx.colorSpace = THREE.SRGBColorSpace;
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx, depthTest: false, transparent: true }));
+      sp.renderOrder = 12;
+      sp.scale.set(it.activa ? 1.15 : 0.95, it.activa ? 0.46 : 0.38, 1);
+      sp.position.set((min[0] + max[0] + 1) / 2 + fx * 0.62, (min[1] + max[1] + 1) / 2, (min[2] + max[2] + 1) / 2 + fz * 0.62);
+      this.etiquetas.add(sp);
+    }
+  }
+
   /** Marco del estante elegido con la herramienta Seleccionar. */
   fijarSeleccion(bloques: Bloque[] | null, color = '#F27A9B') {
     this.sucio = true;
@@ -621,17 +658,6 @@ export class EscenaTienda {
     this.seleccion.position.set((min[0] + max[0] + 1) / 2, (min[1] + max[1] + 1) / 2, (min[2] + max[2] + 1) / 2);
     this.seleccion.scale.set(max[0] - min[0] + 1.08, max[1] - min[1] + 1.08, max[2] - min[2] + 1.08);
     (this.seleccion.material as THREE.LineBasicMaterial).color.set(color);
-  }
-
-  /** Línea gruesa sobre una junta (herramienta Dividir), entre dos puntos alineados a un eje. */
-  fijarJunta(a: Celda | null, b?: Celda, color = '#F27A9B') {
-    this.sucio = true;
-    this.junta.visible = !!a && !!b;
-    if (!a || !b) return;
-    const g = 0.07;
-    this.junta.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
-    this.junta.scale.set(Math.max(g, Math.abs(b[0] - a[0])), Math.max(g, Math.abs(b[1] - a[1])), Math.max(g, Math.abs(b[2] - a[2])));
-    (this.junta.material as THREE.MeshBasicMaterial).color.set(color);
   }
 
   // ───────────── animación ─────────────
@@ -677,6 +703,7 @@ export class EscenaTienda {
     for (const m of this.mallas) m.dispose();
     this.mostrarRuta([]);
     this.limpiarExtras();
+    this.fijarEtiquetas([]);
     this.escena.traverse((o) => {
       if ((o instanceof THREE.Mesh || o instanceof THREE.LineSegments) && !(o instanceof THREE.InstancedMesh)) {
         o.geometry.dispose();

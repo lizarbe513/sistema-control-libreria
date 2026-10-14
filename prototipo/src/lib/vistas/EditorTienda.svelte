@@ -4,17 +4,14 @@
   import Hotbar, { type Modo } from '../componentes/tienda/Hotbar.svelte';
   import Inventario from '../componentes/tienda/Inventario.svelte';
   import PanelTienda from '../componentes/tienda/PanelTienda.svelte';
+  import OrganizarEstante from '../componentes/tienda/OrganizarEstante.svelte';
   import TarjetaEstante from '../componentes/tienda/TarjetaEstante.svelte';
   import { app, avisar, guardar, leer } from '../estado.svelte';
-  import { familiaDe } from '../tienda/bloques';
-  import { EscenaTienda, type Apuntado, type Caja, type Celda } from '../tienda/escena';
+    import { EscenaTienda, type Apuntado, type Caja, type Celda } from '../tienda/escena';
   import {
-    FRENTE,
     columnas,
     compartimentos,
-    iniciosDeTramo,
     infoTipo,
-    tablasDe,
     textoPosicion,
     ubicacionDe,
     type Bloque,
@@ -45,6 +42,8 @@
   let seleccionado = $state<string | null>(null);
   let uniendo = $state(false);
   let separarEn = $state<{ x: number; z: number } | null>(null);
+  let organizando = $state(false);
+  let sobreCuadro = $state<Bloque[] | null>(null);
   const estanteSel = $derived(tienda.datos.estantes.find((e) => e.id === seleccionado) ?? null);
   const puedeSeparar = $derived.by(() => {
     if (!seleccionado || !separarEn) return false;
@@ -80,6 +79,31 @@
   $effect(() => {
     // si el estante elegido desaparece (por ejemplo, al borrar todos sus bloques), se suelta la selección
     if (seleccionado && !tienda.datos.estantes.some((e) => e.id === seleccionado)) seleccionado = null;
+    if (!seleccionado) organizando = false;
+  });
+  // mientras se organiza: números flotantes sobre cada compartimento y resalte del que está bajo el mouse
+  $effect(() => {
+    const e = estanteSel;
+    if (!organizando || !e) {
+      escena?.fijarEtiquetas([]);
+      return;
+    }
+    const tr = compartimentos(tienda.datos, e.id);
+    const term = infoTipo(tienda.datos.bloques.find((b) => b.estante === e.id)?.tipo ?? 'estanteria').terminos;
+    const sig = typeof term === 'object' ? [term[0][0], term[1][0]] : ['T', 'R'];
+    const lista = tr.flatMap((t, ti) =>
+      t.repisas.map((rep, ri) => ({
+        texto: `${sig[0]}${ti + 1}·${sig[1]}${ri + 1}`,
+        bloques: rep,
+        color: e.fuerte,
+        activa: sobreCuadro === rep || (!!sobreCuadro && sobreCuadro.length === rep.length && sobreCuadro[0] === rep[0]),
+      })),
+    );
+    escena?.fijarEtiquetas(lista);
+  });
+  $effect(() => {
+    if (!organizando) escena?.resaltar(null);
+    else escena?.resaltar(sobreCuadro, seleccionado ?? undefined, false);
   });
   $effect(() => {
     const id = seleccionado;
@@ -90,7 +114,6 @@
     void relleno;
     if (modo !== 'seleccionar') uniendo = false;
     esquina = null;
-    escena?.fijarJunta(null);
   });
 
   // ───────── colocar ─────────
@@ -181,74 +204,11 @@
     avisar(n ? `Colocados ${n} bloques` : 'Ese espacio ya estaba lleno');
   }
 
-  // ───────── dividir ─────────
-
-  interface Junta {
-    a: Celda;
-    b: Celda;
-    existe: boolean;
-    texto: string;
-    aplicar: () => void;
-  }
-
-  /** Junta más cercana al punto tocado en el frente de un estante: vertical (tramo) u horizontal (repisa). */
-  function calcularJunta(ap: Apuntado): Junta | null {
-    const b = ap.bloque;
-    if (!b?.estante || !ap.local || !familiaDe(b.tipo)) return null;
-    const [fx, fz] = FRENTE[b.rot] ?? [0, 1];
-    if (ap.normal?.[0] !== fx || ap.normal?.[2] !== fz) return null;
-    const t = tienda.datos;
-    const e = t.estantes.find((s) => s.id === b.estante);
-    if (!e) return null;
-    const [rx, rz] = [fz, -fx];
-    const term = infoTipo(b.tipo).terminos as [string, string];
-    const cols = columnas(t, e.id);
-    const u = ap.local[0];
-    const v = ap.local[1];
-    const fuera = 0.53;
-
-    if (0.5 - Math.abs(u) < 0.5 - Math.abs(v)) {
-      const s = u >= 0 ? 1 : -1;
-      const vecina = cols.find((c) => c.x === b.x + s * rx && c.z === b.z + s * rz);
-      const propia = cols.find((c) => c.x === b.x && c.z === b.z);
-      if (!vecina || !propia) return null;
-      const derecha = s > 0 ? vecina : propia;
-      const existe = iniciosDeTramo(e, cols, b.tipo).has(`${derecha.x},${derecha.z}`);
-      const ys = [...propia.bloques, ...vecina.bloques].map((o) => o.y);
-      const px = b.x + 0.5 + s * rx * 0.5 + fx * fuera;
-      const pz = b.z + 0.5 + s * rz * 0.5 + fz * fuera;
-      return {
-        a: [px, Math.min(...ys), pz],
-        b: [px, Math.max(...ys) + 1, pz],
-        existe,
-        texto: existe ? `Clic: unir estos dos ${term[0].toLowerCase()}s` : `Clic: separar en dos ${term[0].toLowerCase()}s`,
-        aplicar: () => tienda.alternarTramo(e.id, derecha.x, derecha.z),
-      };
-    }
-    const y = v >= 0 ? b.y : b.y - 1; // tabla encima de la fila y
-    const tr = compartimentos(t, e.id).find((x) => x.columnas.some((c) => c.x === b.x && c.z === b.z));
-    if (!tr) return null;
-    const tiene = (yy: number) => tr.columnas.some((c) => c.bloques.some((o) => o.y === yy));
-    if (!tiene(y) || !tiene(y + 1)) return null;
-    const hay = tablasDe(e, t, b.tipo);
-    const existe = tr.columnas.some((c) => hay(c.x, y, c.z));
-    const c0 = tr.columnas[0];
-    const c1 = tr.columnas[tr.columnas.length - 1];
-    return {
-      a: [c0.x + 0.5 - rx * 0.5 + fx * fuera, y + 1, c0.z + 0.5 - rz * 0.5 + fz * fuera],
-      b: [c1.x + 0.5 + rx * 0.5 + fx * fuera, y + 1, c1.z + 0.5 + rz * 0.5 + fz * fuera],
-      existe,
-      texto: existe ? `Clic: quitar esta tabla (${term[1].toLowerCase()} más alta)` : `Clic: poner una tabla (dos ${term[1].toLowerCase()}s)`,
-      aplicar: () => tienda.alternarTabla(e.id, y, tr.columnas),
-    };
-  }
-
   // ───────── puntero ─────────
 
   let inicio: { x: number; y: number; boton: number } | null = null;
 
   function textoInfo(ap: Apuntado): string | null {
-    if (modo === 'dividir') return calcularJunta(ap)?.texto ?? (ap.bloque?.estante ? 'Apunta al frente, cerca de una junta' : null);
     if (modo === 'seleccionar' && uniendo) return ap.bloque?.estante ? 'Clic: unir con este estante' : 'Elige otro estante';
     if (modo === 'construir' && !ranuras[elegida]) return 'Ranura vacía: abre el inventario (E)';
     if (!ap.bloque) return esquina ? 'Clic: la otra punta' : null;
@@ -260,11 +220,7 @@
   function mover(e: PointerEvent) {
     if (!escena) return;
     const ap = escena.apuntar(e.clientX, e.clientY);
-    if (modo === 'dividir') {
-      const j = calcularJunta(ap);
-      escena.fijarJunta(j?.a ?? null, j?.b, j?.existe ? '#E0405F' : '#F27A9B');
-      escena.fijarCursor(j ? null : ap.marco);
-    } else if (relleno && esquina && (modo === 'construir' || modo === 'borrar')) {
+    if (relleno && esquina && (modo === 'construir' || modo === 'borrar')) {
       const b = modo === 'borrar' && ap.bloque ? ([ap.bloque.x, ap.bloque.y, ap.bloque.z] as Celda) : ap.celda;
       escena.fijarCursor(b ? cajaDe(esquina, b) : cajaDe(esquina, esquina), modo === 'borrar' ? 'relleno-borrar' : 'relleno');
     } else if (modo === 'borrar') {
@@ -298,9 +254,7 @@
       return;
     }
 
-    if (modo === 'dividir') {
-      calcularJunta(ap)?.aplicar();
-    } else if (modo === 'seleccionar') {
+    if (modo === 'seleccionar') {
       const id = ap.bloque?.estante ?? null;
       if (uniendo && seleccionado && id && id !== seleccionado) {
         tienda.unir(seleccionado, id);
@@ -401,7 +355,7 @@
       modo = 'construir';
     } else if (k === 'x') modo = modo === 'borrar' ? 'construir' : 'borrar';
     else if (k === 'v') modo = modo === 'seleccionar' ? 'construir' : 'seleccionar';
-    else if (k === 'd') modo = modo === 'dividir' ? 'construir' : 'dividir';
+    else if (k === 'o') organizando = !organizando && !!seleccionado;
     else if (k === 'f') relleno = !relleno;
     else if (k === 'r') giroExtra = (giroExtra + 1) % 4;
     else if (k === 'p' && app.enfoque) panelAbierto = !panelAbierto;
@@ -428,9 +382,7 @@
       ? '🧽 Borrador: clic quita' + (relleno ? ' · ▦ dos puntas vacían la zona' : '')
       : modo === 'seleccionar'
         ? '👆 Seleccionar: clic en un estante para editarlo'
-        : modo === 'dividir'
-          ? '✂️ Dividir: clic en una junta del frente agrega o quita tramos y repisas'
-          : relleno
+        : relleno
             ? '▦ Relleno: clic en una punta y luego en la otra (apunta a una pared o bloque para subir)'
             : 'Clic pone · clic derecho quita · arrastrar con clic derecho gira · Espacio + clic derecho mueve · rueda zoom · R rota',
   );
@@ -452,8 +404,7 @@
       onpointerup={soltar}
       onpointerleave={() => {
         escena?.fijarCursor(null);
-        escena?.fijarJunta(null);
-        info = null;
+            info = null;
       }}
       oncontextmenu={(e) => e.preventDefault()}
     ></canvas>
@@ -481,7 +432,9 @@
       </button>
     </div>
 
-    {#if estanteSel}
+    {#if estanteSel && organizando}
+      <OrganizarEstante estante={estanteSel} onResaltar={(b) => (sobreCuadro = b)} onCerrar={() => (organizando = false)} />
+    {:else if estanteSel}
       <TarjetaEstante
         estante={estanteSel}
         {puedeSeparar}
@@ -491,6 +444,7 @@
           uniendo = !uniendo;
         }}
         onSeparar={separar}
+        onOrganizar={() => (organizando = true)}
         onBorrar={borrarSeleccionado}
         onCerrar={() => (seleccionado = null)}
       />

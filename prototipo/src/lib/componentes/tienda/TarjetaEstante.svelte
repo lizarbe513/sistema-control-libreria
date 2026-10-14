@@ -9,6 +9,7 @@
     uniendo,
     onUnir,
     onSeparar,
+    onOrganizar,
     onBorrar,
     onCerrar,
   }: {
@@ -17,6 +18,7 @@
     uniendo: boolean;
     onUnir: () => void;
     onSeparar: () => void;
+    onOrganizar: () => void;
     onBorrar: () => void;
     onCerrar: () => void;
   } = $props();
@@ -67,11 +69,10 @@
   </div>
 
   <p class="resumen">{resumen}</p>
-  {#if typeof terminos === 'object'}
-    <p class="pista">Usa ✂️ <b>Dividir</b> (D) para cambiar el tamaño de los {terminos[0].toLowerCase()}s y {terminos[1].toLowerCase()}s.</p>
-  {/if}
-
   <div class="acciones">
+    {#if typeof terminos === 'object'}
+      <button class="btn btn-primario organizar" onclick={onOrganizar}>🗂️ Organizar {terminos[0].toLowerCase()}s y {terminos[1].toLowerCase()}s (O)</button>
+    {/if}
     <button class="btn btn-blanco" class:activo={uniendo} onclick={onUnir}>{uniendo ? 'Haz clic en otro estante…' : '🔗 Unir con…'}</button>
     <button class="btn btn-blanco" onclick={onSeparar} disabled={!puedeSeparar} title="Parte el estante desde la columna que tocaste">✂️ Separar desde aquí</button>
     <button class="btn btn-blanco peligro" onclick={onBorrar}>🗑️ Borrar estante</button>
@@ -169,10 +170,6 @@
   .resumen {
     font-weight: 800;
   }
-  .pista {
-    color: var(--muted);
-    font-size: 12px;
-  }
   .acciones {
     display: flex;
     flex-direction: column;
@@ -188,6 +185,9 @@
   }
   .acciones .btn:disabled {
     opacity: 0.45;
+  }
+  .organizar {
+    justify-content: center !important;
   }
   .peligro {
     color: #c0392b;

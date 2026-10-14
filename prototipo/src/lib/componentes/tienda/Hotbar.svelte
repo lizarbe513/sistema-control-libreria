@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type Modo = 'construir' | 'borrar' | 'seleccionar' | 'dividir';
+  export type Modo = 'construir' | 'borrar' | 'seleccionar';
 </script>
 
 <script lang="ts">
@@ -25,7 +25,6 @@
   const HERRAMIENTAS: { id: Exclude<Modo, 'construir'>; nombre: string; emoji: string; tecla: string }[] = [
     { id: 'borrar', nombre: 'Borrador', emoji: '🧽', tecla: 'X' },
     { id: 'seleccionar', nombre: 'Seleccionar estante', emoji: '👆', tecla: 'V' },
-    { id: 'dividir', nombre: 'Dividir tramos y repisas', emoji: '✂️', tecla: 'D' },
   ];
 
   /** Las herramientas son interruptores: volver a pulsar regresa a construir. */

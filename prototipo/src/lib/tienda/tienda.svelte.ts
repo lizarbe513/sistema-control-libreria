@@ -281,6 +281,43 @@ class Almacen {
     return !habia;
   }
 
+  /** Un tramo cada `n` columnas (las tablas de repisa no cambian). */
+  tramosCada(id: string, n: number) {
+    const e = this.datos.estantes.find((s) => s.id === id);
+    if (!e) return;
+    const d = materializar(this.datos, e);
+    const inicioTramo = columnas(this.datos, id)
+      .filter((_, i) => i % Math.max(1, n) === 0)
+      .map((c) => `${c.x},${c.z}`);
+    this.aplicar({ ...this.datos, estantes: this.datos.estantes.map((s) => (s.id === id ? { ...s, ...d, inicioTramo } : s)) });
+  }
+
+  /** Una repisa cada `n` filas, contando desde la base (los tramos no cambian). */
+  repisasCada(id: string, n: number) {
+    const e = this.datos.estantes.find((s) => s.id === id);
+    if (!e) return;
+    const d = materializar(this.datos, e);
+    const propios = this.datos.bloques.filter((b) => b.estante === id);
+    const base = Math.min(...propios.map((b) => b.y));
+    const tablas = propios.filter((b) => (b.y - base + 1) % Math.max(1, n) === 0).map((b) => clave(b.x, b.y, b.z));
+    this.aplicar({ ...this.datos, estantes: this.datos.estantes.map((s) => (s.id === id ? { ...s, ...d, tablas } : s)) });
+  }
+
+  /** Todo el estante en un solo compartimento. */
+  unCompartimento(id: string) {
+    this.aplicar({ ...this.datos, estantes: this.datos.estantes.map((s) => (s.id === id ? { ...s, inicioTramo: [], tablas: [] } : s)) });
+  }
+
+  /** Dirección de la numeración de tramos y repisas. */
+  fijarOrden(id: string, orden: Partial<NonNullable<Estante['orden']>>) {
+    this.aplicar({
+      ...this.datos,
+      estantes: this.datos.estantes.map((s) =>
+        s.id === id ? { ...s, orden: { tramos: 'izq', repisas: 'arriba', ...s.orden, ...orden } } : s,
+      ),
+    });
+  }
+
   /** Borra todo el maquetado y deja una base vacía con las medidas dadas. */
   vaciar(m: Medidas) {
     this.aplicar({ ancho: m.ancho, fachada: m.largo, fondo: m.largo + m.vereda, alto: m.alto, bloques: [], estantes: [] });
