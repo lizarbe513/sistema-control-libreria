@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use libreria_core::busqueda::{self, Filtros};
-use libreria_core::isbn::{self, Sugerencia};
+use libreria_core::isbn::{self, ResultadoLinea, Sugerencia};
 use libreria_core::libros::{self, Categoria, Contadores, Libro, LibroEntrada};
 use libreria_core::tienda::{self, Plantilla, Tienda};
 use libreria_core::{Error, Result, portadas};
@@ -100,6 +100,17 @@ pub fn inventario_resumen(estado: State<Estado>) -> Res<Resumen> {
 #[tauri::command]
 pub async fn isbn_consultar(isbn: String) -> Res<Sugerencia> {
     isbn::consultar(&isbn).await
+}
+
+/// Busca libros en internet por título y/o autor (para dar de alta libros sin ISBN o sin datos).
+#[tauri::command]
+pub async fn libros_buscar_en_linea(estado: State<'_, Estado>, titulo: String, autor: String) -> Res<Vec<ResultadoLinea>> {
+    // la clave de Google (opcional) se lee antes y el candado se suelta: la búsqueda va por internet
+    let clave = con_abierta(&estado, |a| {
+        a.puede_editar_libros()?;
+        Ok(a.lib.conn.query_row("SELECT valor FROM config WHERE clave = 'clave_google_books'", [], |f| f.get::<_, String>(0)).ok())
+    })?;
+    isbn::buscar_en_linea(&titulo, &autor, clave.as_deref()).await
 }
 
 fn guardar_portada(estado: &State<Estado>, id: i64, bytes: &[u8]) -> Res<Libro> {

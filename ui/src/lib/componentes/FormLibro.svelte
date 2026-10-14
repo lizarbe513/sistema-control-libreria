@@ -3,13 +3,14 @@
   // la ubicación elegida tocando la tienda 3D.
   import { untrack } from 'svelte';
   import { fly, fade } from 'svelte/transition';
-  import { api, type Formato, type LibroApi, type Sugerencia, type UbicacionApi } from '../api';
+  import { api, type Formato, type LibroApi, type ResultadoLinea, type Sugerencia, type UbicacionApi } from '../api';
   import { CATEGORIAS, soles, type Libro } from '../datos';
   import { avisar } from '../estado.svelte';
   import { aCentimos, aSoles, inventario, inventarioCambio, vista } from '../inventario.svelte';
   import { esDuena } from '../sesion.svelte';
   import { compartimentos, infoTipo, resolver, textoPosicion, tipoDeEstante } from '../tienda/modelo';
   import { tienda } from '../tienda/tienda.svelte';
+  import BuscadorLinea from './BuscadorLinea.svelte';
   import Icono from './Icono.svelte';
   import Tienda3D from './Tienda3D.svelte';
 
@@ -39,6 +40,33 @@
   let portadaPendiente = $state<{ tipo: 'url' | 'archivo'; valor: string } | null>(null);
   let quitarPortada = $state(false);
   const vistaPortada = $derived(portadaPendiente?.valor ?? (quitarPortada ? null : ini?.portada) ?? null);
+
+  // cómo se empieza un libro nuevo: por título/autor en internet (lo habitual), por ISBN, o a mano
+  type Modo = 'linea' | 'isbn' | 'manual';
+  let modo = $state<Modo>('linea');
+  let elegido = $state<ResultadoLinea | null>(null);
+
+  /** Un resultado de la búsqueda en línea: llena el formulario y deja su portada pendiente. */
+  function elegirResultado(r: ResultadoLinea) {
+    elegido = r;
+    titulo = r.titulo;
+    autor = r.autor;
+    editorial = r.editorial;
+    anio = r.anio ? String(r.anio) : '';
+    isbn = r.isbn ?? '';
+    portadaPendiente = r.portadaUrl ? { tipo: 'url', valor: r.portadaUrl } : null;
+    quitarPortada = false;
+    // con ISBN, Open Library suele tener también la sinopsis: se completa sin molestar
+    if (r.isbn && !sinopsis.trim()) {
+      const esteIsbn = r.isbn;
+      api
+        .consultarIsbn(esteIsbn)
+        .then((s) => {
+          if (elegido === r && !sinopsis.trim()) sinopsis = s.sinopsis;
+        })
+        .catch(() => {});
+    }
+  }
 
   let buscandoIsbn = $state(false);
   let sugerencia = $state<Sugerencia | null>(null);
@@ -187,18 +215,37 @@
   </header>
 
   <form onsubmit={guardar}>
-    <section class="isbn">
-      <label class="campo">
-        ISBN <small>(si no tiene, déjalo vacío: se le da un código interno)</small>
-        <div class="fila">
-          <input bind:value={isbn} placeholder="978…" inputmode="numeric" autocomplete="off" />
-          <button type="button" class="btn btn-suave" onclick={buscarDatos} disabled={!isbn.trim() || buscandoIsbn}>
-            {buscandoIsbn ? 'Buscando…' : '🔎 Buscar datos'}
-          </button>
-        </div>
-      </label>
-      {#if sugerencia}<p class="nota">Datos de <b>{sugerencia.fuente}</b>. Puedes corregir cualquier campo.</p>{/if}
-    </section>
+    {#if nuevo}
+      <div class="modos" role="tablist" aria-label="Cómo empezar">
+        <button type="button" role="tab" aria-selected={modo === 'linea'} class:activo={modo === 'linea'} onclick={() => (modo = 'linea')}>🔎 Buscar por título o autor</button>
+        <button type="button" role="tab" aria-selected={modo === 'isbn'} class:activo={modo === 'isbn'} onclick={() => (modo = 'isbn')}>ISBN</button>
+        <button type="button" role="tab" aria-selected={modo === 'manual'} class:activo={modo === 'manual'} onclick={() => (modo = 'manual')}>A mano</button>
+      </div>
+
+      {#if modo === 'linea'}
+        {#if elegido}
+          <div class="elegido">
+            <span>✅ <b>{elegido.titulo}</b>{elegido.autor ? ` · ${elegido.autor}` : ''}<small> · datos de {elegido.fuente}</small></span>
+            <button type="button" class="mini" onclick={() => (elegido = null)}>Elegir otro</button>
+          </div>
+        {/if}
+        <div hidden={!!elegido}><BuscadorLinea onElegir={elegirResultado} /></div>
+      {:else if modo === 'isbn'}
+        <section class="isbn">
+          <label class="campo">
+            ISBN
+            <div class="fila">
+              <input bind:value={isbn} placeholder="978…" inputmode="numeric" autocomplete="off" />
+              <button type="button" class="btn btn-suave" onclick={buscarDatos} disabled={!isbn.trim() || buscandoIsbn}>
+                {buscandoIsbn ? 'Buscando…' : '🔎 Buscar datos'}
+              </button>
+            </div>
+          </label>
+          {#if sugerencia}<p class="nota">Datos de <b>{sugerencia.fuente}</b>. Puedes corregir cualquier campo.</p>{/if}
+          <p class="nota">¿Tu libro no tiene ISBN? Usa «Buscar por título o autor» o llena los datos a mano.</p>
+        </section>
+      {/if}
+    {/if}
 
     <div class="dos">
       <div class="portada">
@@ -226,6 +273,11 @@
       <div class="datos">
         <label class="campo">Título <input bind:value={titulo} required maxlength="300" /></label>
         <label class="campo">Autor <input bind:value={autor} maxlength="200" /></label>
+        {#if modo !== 'isbn' || !nuevo}
+          <label class="campo">ISBN <small>(opcional: muchos libros no lo tienen; se les da un código interno)</small>
+            <input bind:value={isbn} inputmode="numeric" autocomplete="off" placeholder="978…" />
+          </label>
+        {/if}
         <div class="fila">
           <label class="campo crece">Editorial <input bind:value={editorial} maxlength="120" /></label>
           <label class="campo">Año <input bind:value={anio} inputmode="numeric" maxlength="4" class="corto" /></label>
@@ -428,6 +480,41 @@
   }
   .corto {
     width: 90px;
+  }
+  .modos {
+    display: flex;
+    gap: 6px;
+    padding: 4px;
+    border-radius: 999px;
+    background: var(--surface-2);
+  }
+  .modos button {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: 13px;
+  }
+  .modos button.activo {
+    background: var(--surface);
+    color: var(--primary-strong);
+    box-shadow: var(--sombra-suave);
+  }
+  .elegido {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: color-mix(in srgb, #5dbb8a 16%, var(--surface));
+    font-size: 14px;
+  }
+  .elegido small {
+    color: var(--muted);
+  }
+  [hidden] {
+    display: none !important;
   }
   .nota {
     margin: 4px 0 0;

@@ -11,6 +11,7 @@ import type {
   LibroEntrada,
   PlantillaApi,
   PlantillasApi,
+  ResultadoLinea,
   ResumenInventario,
   Rol,
   Sugerencia,
@@ -87,6 +88,9 @@ export class ApiTauri implements Api {
   }
   consultarIsbn(isbn: string) {
     return this.llamar<Sugerencia>('isbn_consultar', { isbn });
+  }
+  buscarEnLinea(titulo: string, autor: string) {
+    return this.llamar<ResultadoLinea[]>('libros_buscar_en_linea', { titulo, autor });
   }
   portadaDesdeUrl(id: number, url: string) {
     return this.llamar<LibroApi>('portada_desde_url', { id, url });

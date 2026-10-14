@@ -113,6 +113,18 @@ export interface Sugerencia {
   fuente: string;
 }
 
+/** Un libro encontrado en internet por título o autor. */
+export interface ResultadoLinea {
+  titulo: string;
+  autor: string;
+  editorial: string;
+  anio: number | null;
+  isbn: string | null;
+  portadaUrl: string | null;
+  espanol: boolean;
+  fuente: string;
+}
+
 export interface Contadores {
   libros: number;
   unidades: number;

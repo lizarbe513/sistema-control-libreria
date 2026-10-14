@@ -81,6 +81,9 @@
     font-size: 14px;
   }
   :global(.acceso .campo input) {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     font: inherit;
     font-weight: 600;
     font-size: 16px;

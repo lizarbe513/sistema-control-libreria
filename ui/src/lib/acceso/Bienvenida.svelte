@@ -234,7 +234,8 @@
   }
   .dos {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* minmax(0, …): el ancho mínimo propio de un <input> no debe ensanchar la columna */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 10px;
   }
   .fuerza {

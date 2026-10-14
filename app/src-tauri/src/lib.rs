@@ -41,6 +41,7 @@ pub fn run() {
             inventario::stock_ajustar,
             inventario::inventario_resumen,
             inventario::isbn_consultar,
+            inventario::libros_buscar_en_linea,
             inventario::portada_desde_url,
             inventario::portada_desde_archivo,
             inventario::portada_quitar,

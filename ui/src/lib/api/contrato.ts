@@ -8,6 +8,7 @@ import type {
   LibroEntrada,
   PlantillaApi,
   PlantillasApi,
+  ResultadoLinea,
   ResumenInventario,
   Rol,
   Sugerencia,
@@ -39,6 +40,8 @@ export interface Api {
   ajustarStock(id: number, delta: number, motivo: 'ingreso' | 'ajuste', nota?: string): Promise<LibroApi>;
   resumenInventario(): Promise<ResumenInventario>;
   consultarIsbn(isbn: string): Promise<Sugerencia>;
+  /** Libros conocidos por título y/o autor, con su portada (para libros sin ISBN). */
+  buscarEnLinea(titulo: string, autor: string): Promise<ResultadoLinea[]>;
   portadaDesdeUrl(id: number, url: string): Promise<LibroApi>;
   /** `origen`: ruta (Tauri) o dataURL (demo), como la devuelve `elegirImagen`. */
   portadaDesdeArchivo(id: number, origen: string): Promise<LibroApi>;

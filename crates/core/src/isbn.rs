@@ -181,6 +181,155 @@ pub async fn consultar(entrada: &str) -> Result<Sugerencia> {
     }
 }
 
+/// Un libro encontrado por título o autor en internet.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultadoLinea {
+    pub titulo: String,
+    pub autor: String,
+    pub editorial: String,
+    pub anio: Option<i64>,
+    /// ISBN-13 si la edición lo tiene.
+    pub isbn: Option<String>,
+    pub portada_url: Option<String>,
+    pub espanol: bool,
+    pub fuente: String,
+}
+
+fn lista(v: &Value) -> Vec<String> {
+    v.as_array().map(|a| a.iter().map(texto).filter(|s| !s.is_empty()).collect()).unwrap_or_default()
+}
+
+/// Respuesta de `openlibrary.org/search.json`.
+pub fn desde_busqueda_open_library(json: &Value) -> Vec<ResultadoLinea> {
+    let Some(docs) = json["docs"].as_array() else { return Vec::new() };
+    docs.iter()
+        .filter_map(|d| {
+            let titulo = texto(&d["title"]);
+            if titulo.is_empty() {
+                return None;
+            }
+            let isbn = lista(&d["isbn"]).iter().find_map(|i| normalizar(i));
+            let portada_url = d["cover_i"]
+                .as_i64()
+                .map(|c| format!("https://covers.openlibrary.org/b/id/{c}-L.jpg"))
+                // sin portada propia, se prueba la del ISBN (puede no existir: la interfaz lo tolera)
+                .or_else(|| isbn.as_ref().map(|i| format!("https://covers.openlibrary.org/b/isbn/{i}-L.jpg?default=false")));
+            Some(ResultadoLinea {
+                titulo,
+                autor: lista(&d["author_name"]).into_iter().take(2).collect::<Vec<_>>().join(", "),
+                editorial: lista(&d["publisher"]).into_iter().next().unwrap_or_default(),
+                anio: d["first_publish_year"].as_i64(),
+                isbn,
+                portada_url,
+                espanol: lista(&d["language"]).iter().any(|l| l == "spa"),
+                fuente: "Open Library".into(),
+            })
+        })
+        .collect()
+}
+
+/// Respuesta de `googleapis.com/books/v1/volumes?q=intitle:…`.
+pub fn desde_busqueda_google(json: &Value) -> Vec<ResultadoLinea> {
+    let Some(items) = json["items"].as_array() else { return Vec::new() };
+    items
+        .iter()
+        .filter_map(|it| {
+            let v = &it["volumeInfo"];
+            let titulo = texto(&v["title"]);
+            if titulo.is_empty() {
+                return None;
+            }
+            let isbn = v["industryIdentifiers"].as_array().and_then(|a| a.iter().find_map(|i| normalizar(&texto(&i["identifier"]))));
+            let portada = ["thumbnail", "smallThumbnail"].iter().map(|k| texto(&v["imageLinks"][*k])).find(|s| !s.is_empty());
+            Some(ResultadoLinea {
+                titulo,
+                autor: lista(&v["authors"]).into_iter().take(2).collect::<Vec<_>>().join(", "),
+                editorial: texto(&v["publisher"]),
+                anio: anio_de(&texto(&v["publishedDate"])),
+                isbn,
+                portada_url: portada.map(|u| https(&u).replace("&edge=curl", "")),
+                espanol: texto(&v["language"]) == "es",
+                fuente: "Google Books".into(),
+            })
+        })
+        .collect()
+}
+
+/// Quita repetidos (mismo título y autor) y pone primero lo que tiene portada y está en español.
+pub fn ordenar_resultados(mut v: Vec<ResultadoLinea>, limite: usize) -> Vec<ResultadoLinea> {
+    let clave =
+        |r: &ResultadoLinea| format!("{}|{}", crate::busqueda::normalizar(&r.titulo).trim(), crate::busqueda::normalizar(&r.autor).trim());
+    let mut vistos = std::collections::HashSet::new();
+    v.retain(|r| vistos.insert(clave(r)));
+    // estable: dentro de cada grupo se conserva el orden de relevancia del servicio
+    v.sort_by_key(|r| (r.portada_url.is_none(), !r.espanol));
+    v.truncate(limite);
+    v
+}
+
+/// Busca libros en internet por título y/o autor. Open Library es la base; Google Books solo ayuda cuando
+/// aquella devuelve poco (y se ignora en silencio si su cuota gratuita está agotada).
+pub async fn buscar_en_linea(titulo: &str, autor: &str, clave_google: Option<&str>) -> Result<Vec<ResultadoLinea>> {
+    let (titulo, autor) = (titulo.trim(), autor.trim());
+    if titulo.chars().count() < 2 && autor.chars().count() < 2 {
+        return Err(Error::Validacion("Escribe al menos el título o el autor".into()));
+    }
+    let cliente = cliente()?;
+    let consulta = |con_idioma: bool| {
+        let mut q =
+            vec![("limit", "24".to_string()), ("fields", "title,author_name,first_publish_year,cover_i,isbn,publisher,language".into())];
+        if !titulo.is_empty() {
+            q.push(("title", titulo.into()));
+        }
+        if !autor.is_empty() {
+            q.push(("author", autor.into()));
+        }
+        if con_idioma {
+            q.push(("language", "spa".into()));
+        }
+        cliente.get("https://openlibrary.org/search.json").query(&q)
+    };
+    let pedir = |rb: reqwest::RequestBuilder| async move { rb.send().await.ok()?.error_for_status().ok()?.json::<Value>().await.ok() };
+
+    let mut hubo_respuesta = false;
+    let mut resultados = Vec::new();
+    for con_idioma in [true, false] {
+        if let Some(j) = pedir(consulta(con_idioma)).await {
+            hubo_respuesta = true;
+            resultados = desde_busqueda_open_library(&j);
+        }
+        if resultados.len() >= 3 {
+            break;
+        }
+    }
+    if resultados.len() < 3 {
+        let mut q = String::new();
+        if !titulo.is_empty() {
+            q.push_str(&format!("intitle:{titulo}"));
+        }
+        if !autor.is_empty() {
+            q.push_str(&format!("{}inauthor:{autor}", if q.is_empty() { "" } else { "+" }));
+        }
+        let mut rb = cliente.get("https://www.googleapis.com/books/v1/volumes").query(&[
+            ("q", q.as_str()),
+            ("maxResults", "12"),
+            ("printType", "books"),
+        ]);
+        if let Some(k) = clave_google.filter(|k| !k.is_empty()) {
+            rb = rb.query(&[("key", k)]);
+        }
+        if let Some(j) = pedir(rb).await {
+            hubo_respuesta = true;
+            resultados.extend(desde_busqueda_google(&j));
+        }
+    }
+    if !hubo_respuesta {
+        return Err(Error::Red("No hay conexión a internet. Puedes llenar los datos a mano.".into()));
+    }
+    Ok(ordenar_resultados(resultados, 12))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,7 +399,75 @@ mod tests {
         assert!(desde_google("1", &json!({"totalItems": 0})).is_none());
     }
 
+    #[test]
+    fn lee_la_busqueda_de_open_library() {
+        let j = json!({"numFound": 3, "docs": [
+            {"title": "El Principito", "author_name": ["Antoine de Saint-Exupéry", "Marie Mersoye"], "cover_i": 13499066,
+             "first_publish_year": 2018, "isbn": ["8419087491", "9788490746783"], "publisher": ["Verbum", "Salamandra"], "language": ["spa"]},
+            {"title": "El principito", "author_name": ["Antoine de Saint-Exupéry"], "cover_i": 12642764, "first_publish_year": 1999,
+             "isbn": ["xx", "9788478884384"], "publisher": ["Emecé"], "language": ["spa", "eng"]},
+            {"title": "Little Prince", "author_name": ["Antoine de Saint-Exupéry"], "isbn": ["0156012197"], "language": ["eng"]},
+            {"title": "", "author_name": ["Nadie"]}
+        ]});
+        let v = desde_busqueda_open_library(&j);
+        assert_eq!(v.len(), 3, "el de título vacío se descarta");
+        assert_eq!(v[0].autor, "Antoine de Saint-Exupéry, Marie Mersoye");
+        assert_eq!(v[0].isbn.as_deref(), Some("9788419087492"), "el ISBN-10 válido se convierte a ISBN-13");
+        assert_eq!(v[0].portada_url.as_deref(), Some("https://covers.openlibrary.org/b/id/13499066-L.jpg"));
+        assert_eq!(v[0].editorial, "Verbum");
+        assert!(v[0].espanol && !v[2].espanol);
+        // sin cover_i: se prueba la portada por ISBN-13 (el ISBN-10 se convierte)
+        assert_eq!(v[2].portada_url.as_deref(), Some("https://covers.openlibrary.org/b/isbn/9780156012195-L.jpg?default=false"));
+        assert_eq!(v[1].isbn.as_deref(), Some("9788478884384"));
+    }
+
+    #[test]
+    fn ordena_y_quita_repetidos() {
+        let r = |t: &str, a: &str, portada: bool, es: bool| ResultadoLinea {
+            titulo: t.into(),
+            autor: a.into(),
+            portada_url: portada.then(|| "https://x/y.jpg".into()),
+            espanol: es,
+            ..Default::default()
+        };
+        let v = ordenar_resultados(
+            vec![
+                r("The Little Prince", "Saint-Exupéry", true, false),
+                r("El Principito", "Saint-Exupéry", false, true),
+                r("EL PRINCIPITO", "saint-exupery", true, true), // repetido del anterior (sin tildes ni mayúsculas)
+                r("Principito ilustrado", "Otro", true, true),
+            ],
+            10,
+        );
+        let t: Vec<&str> = v.iter().map(|x| x.titulo.as_str()).collect();
+        // con portada y en español primero; el repetido desaparece
+        assert_eq!(t, ["Principito ilustrado", "The Little Prince", "El Principito"]);
+        assert_eq!(ordenar_resultados(v, 2).len(), 2);
+    }
+
+    #[test]
+    fn lee_la_busqueda_de_google() {
+        let j = json!({"items": [{"volumeInfo": {"title": "Cien años de soledad", "authors": ["Gabriel García Márquez"],
+            "publisher": "Debolsillo", "publishedDate": "2015-03-01", "language": "es",
+            "industryIdentifiers": [{"type": "ISBN_10", "identifier": "843760494X"}],
+            "imageLinks": {"thumbnail": "http://books.google.com/x?zoom=1&edge=curl"}}}]});
+        let v = desde_busqueda_google(&j);
+        assert_eq!(v[0].isbn.as_deref(), Some("9788437604947"));
+        assert_eq!(v[0].portada_url.as_deref(), Some("https://books.google.com/x?zoom=1"));
+        assert!(v[0].espanol);
+        // cuota agotada: sin «items» → lista vacía, sin error
+        assert!(desde_busqueda_google(&json!({"error": {"code": 429}})).is_empty());
+    }
+
     /// Con red: `cargo test -p libreria-core -- --ignored`.
+    #[tokio::test]
+    #[ignore]
+    async fn busqueda_en_linea_real() {
+        let v = buscar_en_linea("el principito", "saint-exupery", None).await.unwrap();
+        assert!(v.len() >= 3, "{v:?}");
+        assert!(v.iter().any(|r| r.portada_url.is_some()));
+    }
+
     #[tokio::test]
     #[ignore]
     async fn consulta_real() {

@@ -14,6 +14,7 @@ import type {
   LibroEntrada,
   PlantillaApi,
   PlantillasApi,
+  ResultadoLinea,
   ResumenInventario,
   Rol,
   Sugerencia,
@@ -45,6 +46,25 @@ export function normalizarIsbn(entrada: string): string | null {
   }
   return null;
 }
+
+/** Una portada de ejemplo (dibujada) para los resultados de la demostración. */
+function portadaDemo(titulo: string, color: string) {
+  const t = titulo.replace(/&/g, 'y').replace(/</g, '');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450"><rect width="300" height="450" fill="${color}"/><rect x="18" y="18" width="264" height="414" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="4"/><text x="150" y="215" font-family="sans-serif" font-size="30" font-weight="800" fill="#fff" text-anchor="middle">${t.slice(0, 18)}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+/** Libros conocidos para la búsqueda en línea de la demostración (sin internet). */
+const CATALOGO_DEMO: Omit<ResultadoLinea, 'portadaUrl' | 'fuente'>[] = [
+  { titulo: 'El Principito', autor: 'Antoine de Saint-Exupéry', editorial: 'Salamandra', anio: 1943, isbn: '9788498381146', espanol: true },
+  { titulo: 'El Principito', autor: 'Antoine de Saint-Exupéry', editorial: 'Emecé', anio: 1999, isbn: '9788478884384', espanol: true },
+  { titulo: 'The Little Prince', autor: 'Antoine de Saint-Exupéry', editorial: 'Harcourt', anio: 1943, isbn: '9780156012195', espanol: false },
+  { titulo: 'La ciudad y los perros', autor: 'Mario Vargas Llosa', editorial: 'Alfaguara', anio: 1963, isbn: null, espanol: true },
+  { titulo: 'Conversación en La Catedral', autor: 'Mario Vargas Llosa', editorial: 'Alfaguara', anio: 1969, isbn: null, espanol: true },
+  { titulo: 'Los ríos profundos', autor: 'José María Arguedas', editorial: 'Losada', anio: 1958, isbn: null, espanol: true },
+  { titulo: 'Padre Rico, Padre Pobre', autor: 'Robert T. Kiyosaki', editorial: 'Debolsillo', anio: 1997, isbn: null, espanol: true },
+  { titulo: 'Paco Yunque', autor: 'César Vallejo', editorial: 'Bruño', anio: 1931, isbn: null, espanol: true },
+];
 
 /** Datos de ejemplo para la búsqueda por ISBN del modo demostración (sin internet). */
 const ISBN_DEMO: Record<string, Omit<Sugerencia, 'isbn' | 'fuente'>> = {
@@ -408,6 +428,22 @@ export class ApiDemo implements Api {
     const d = ISBN_DEMO[isbn];
     if (!d) throw new Error('En el modo demostración solo hay datos de ejemplo para algunos ISBN (prueba 9788437604947).');
     return { isbn, ...d, fuente: 'Ejemplo (modo demostración)' };
+  }
+
+  async buscarEnLinea(titulo: string, autor: string): Promise<ResultadoLinea[]> {
+    await espera(600);
+    this.exigirEditar();
+    if (titulo.trim().length < 2 && autor.trim().length < 2) throw new Error('Escribe al menos el título o el autor');
+    const colores = ['#F27A9B', '#6FA8DC', '#5DBB8A', '#E9B949', '#9B87E0'];
+    const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const q = (t: string) => norm(t).split(/\s+/).filter(Boolean);
+    const qt = q(titulo);
+    const qa = q(autor);
+    return CATALOGO_DEMO.filter((c) => qt.every((w) => norm(c.titulo).includes(w)) && qa.every((w) => norm(c.autor).includes(w))).map((c, i) => ({
+      ...c,
+      portadaUrl: i === 1 ? null : portadaDemo(c.titulo, colores[i % colores.length]), // uno sin portada, para probar ese caso
+      fuente: 'Ejemplo (modo demostración)',
+    }));
   }
 
   async portadaDesdeUrl(id: number, url: string) {
