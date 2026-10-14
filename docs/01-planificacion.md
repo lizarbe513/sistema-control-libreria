@@ -146,8 +146,8 @@ Un programa que permita:
 ## 9. Fases del proyecto
 
 1. **Planificación** ✅
-2. **Diseño** ← estamos aquí (`02-diseno.md` + prototipo interactivo)
-3. **Implementación**, por módulos en este orden: base de datos y seguridad → inventario y búsqueda → ventas → encargos → reportes → sincronización con el celular → IA.
+2. **Diseño** ✅ (`02-diseno.md` + prototipo interactivo)
+3. **Implementación** ← estamos aquí (`03-implementacion.md`), por hitos en este orden: base de datos y seguridad ✅ → inventario y búsqueda ✅ → ventas → encargos → reportes → respaldos → sincronización con el celular → IA → instalador.
 4. **Pruebas:** unitarias (Rust), de integración (base de datos/API) y con usuario real (la vendedora).
 5. **Entrega:** instalador de Windows + APK, manual de uso breve y capacitación.
 

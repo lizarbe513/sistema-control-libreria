@@ -1,6 +1,6 @@
-// Búsqueda tolerante a tildes y errores de tipeo.
-// En la app real esto lo hace el backend (FTS5 + similitud); aquí es una versión en memoria.
-import { CATEGORIAS, type Libro } from './datos';
+// Búsqueda tolerante a tildes y errores de tipeo, en el navegador.
+// La app real busca en Rust (crates/core/src/busqueda.rs) con el mismo algoritmo; esta versión la usa
+// el backend de demostración.
 
 export const normalizar = (s: string) =>
   s
@@ -9,7 +9,7 @@ export const normalizar = (s: string) =>
     .toLowerCase()
     .replace(/[^a-z0-9ñ ]/g, ' ');
 
-const palabras = (s: string) => normalizar(s).split(/\s+/).filter(Boolean);
+export const palabras = (s: string) => normalizar(s).split(/\s+/).filter(Boolean);
 
 function distancia(a: string, b: string): number {
   if (Math.abs(a.length - b.length) > 2) return 3;
@@ -38,34 +38,34 @@ function puntajePalabra(q: string, w: string): number {
   return 0;
 }
 
-const indice = new Map<number, { titulo: string[]; resto: string[] }>();
+export interface CamposBusqueda {
+  titulo: string;
+  resto: string;
+  stock: number;
+}
 
-export function buscar(libros: Libro[], consulta: string): Libro[] {
+/** Los elementos que coinciden con la consulta, del más parecido al menos. */
+export function buscarEn<T>(items: T[], consulta: string, campos: (t: T) => CamposBusqueda): T[] {
   const qs = palabras(consulta);
   if (!qs.length) return [];
-  const res: { libro: Libro; p: number }[] = [];
-  for (const libro of libros) {
-    let idx = indice.get(libro.id);
-    if (!idx) {
-      idx = {
-        titulo: palabras(libro.titulo),
-        resto: palabras(`${libro.autor} ${libro.editorial} ${CATEGORIAS[libro.categoria].nombre}`),
-      };
-      indice.set(libro.id, idx);
-    }
+  const res: { item: T; p: number }[] = [];
+  for (const item of items) {
+    const c = campos(item);
+    const titulo = palabras(c.titulo);
+    const resto = palabras(c.resto);
     let total = 0;
     let ok = true;
     for (const q of qs) {
       let mejor = 0;
-      for (const w of idx.titulo) mejor = Math.max(mejor, puntajePalabra(q, w) * 1.2);
-      for (const w of idx.resto) mejor = Math.max(mejor, puntajePalabra(q, w));
+      for (const w of titulo) mejor = Math.max(mejor, puntajePalabra(q, w) * 1.2);
+      for (const w of resto) mejor = Math.max(mejor, puntajePalabra(q, w));
       if (mejor === 0) {
         ok = false;
         break;
       }
       total += mejor;
     }
-    if (ok) res.push({ libro, p: total + (libro.stock > 0 ? 0.05 : 0) });
+    if (ok) res.push({ item, p: total + (c.stock > 0 ? 0.05 : 0) });
   }
-  return res.sort((a, b) => b.p - a.p).map((r) => r.libro);
+  return res.sort((a, b) => b.p - a.p).map((r) => r.item);
 }

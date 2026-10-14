@@ -2,12 +2,22 @@
   import { onMount } from 'svelte';
   import { app } from '../estado.svelte';
   import { EscenaTienda } from '../tienda/escena';
-  import { ruta, type UbicacionResuelta } from '../tienda/modelo';
+  import { infoTipo, ruta, ubicacionDe, type UbicacionResuelta } from '../tienda/modelo';
   import { tienda } from '../tienda/tienda.svelte';
   import Icono from './Icono.svelte';
   import MapaTienda from './MapaTienda.svelte';
 
-  let { ubicacion }: { ubicacion: UbicacionResuelta | null } = $props();
+  let {
+    ubicacion,
+    onElegir,
+    alto = 230,
+  }: {
+    ubicacion: UbicacionResuelta | null;
+    /** Modo «elegir»: tocar un estante, caja, mesa o puerta devuelve su compartimento. */
+    onElegir?: (u: UbicacionResuelta) => void;
+    alto?: number;
+  } = $props();
+  const eligiendo = $derived(!!onElegir);
 
   let contenedor: HTMLDivElement = $state()!;
   let canvas: HTMLCanvasElement = $state()!;
@@ -35,9 +45,51 @@
   $effect(() => {
     if (!escena) return;
     const u = ubicacion;
-    escena.resaltar(u?.bloques ?? null, u?.estante);
-    escena.mostrarRuta(u ? ruta(tienda.datos, u.bloque) : []);
+    // al elegir no se mueve la cámara ni se dibuja el camino: la usuaria está mirando la tienda
+    escena.resaltar(u?.bloques ?? null, u?.estante, !eligiendo);
+    escena.mostrarRuta(u && !eligiendo ? ruta(tienda.datos, u.bloque) : []);
   });
+
+  // ── modo elegir ──
+  let inicio: { x: number; y: number } | null = null;
+  let pista = $state('');
+
+  function compartimentoEn(e: PointerEvent) {
+    const ap = escena?.apuntar(e.clientX, e.clientY);
+    const b = ap?.bloque;
+    if (!b?.estante || !infoTipo(b.tipo).guardaLibros) return null;
+    return ubicacionDe(tienda.datos, b);
+  }
+
+  function mover(e: PointerEvent) {
+    if (!eligiendo || !escena || e.buttons) return;
+    const u = compartimentoEn(e);
+    escena.fijarCursor(u ? limites(u) : null);
+    pista = u ? `${u.info.titulo} · ${u.tramo}/${u.repisa}` : '';
+  }
+
+  function limites(u: UbicacionResuelta) {
+    const xs = u.bloques.map((b) => b.x);
+    const ys = u.bloques.map((b) => b.y);
+    const zs = u.bloques.map((b) => b.z);
+    return {
+      min: [Math.min(...xs), Math.min(...ys), Math.min(...zs)] as [number, number, number],
+      max: [Math.max(...xs) + 1, Math.max(...ys) + 1, Math.max(...zs) + 1] as [number, number, number],
+    };
+  }
+
+  function presionar(e: PointerEvent) {
+    inicio = { x: e.clientX, y: e.clientY };
+  }
+
+  function soltar(e: PointerEvent) {
+    if (!eligiendo || !inicio) return;
+    const quieto = Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y) < 6;
+    inicio = null;
+    if (!quieto) return;
+    const u = compartimentoEn(e);
+    if (u) onElegir?.(u);
+  }
 
   function recentrar() {
     if (ubicacion) escena?.resaltar(ubicacion.bloques, ubicacion.estante);
@@ -48,10 +100,20 @@
 {#if plano}
   <MapaTienda {ubicacion} />
 {:else}
-  <div class="visor" bind:this={contenedor}>
-    <canvas bind:this={canvas} aria-label="Tienda en 3D con el estante resaltado"></canvas>
+  <div class="visor" bind:this={contenedor} style:height="{alto}px" class:eligiendo>
+    <canvas
+      bind:this={canvas}
+      aria-label={eligiendo ? 'Tienda en 3D: toca dónde va el libro' : 'Tienda en 3D con el estante resaltado'}
+      onpointermove={mover}
+      onpointerdown={presionar}
+      onpointerup={soltar}
+      onpointerleave={() => {
+        escena?.fijarCursor(null);
+        pista = '';
+      }}
+    ></canvas>
     <button class="recentrar" onclick={recentrar} aria-label="Volver a centrar" title="Volver a centrar"><Icono nombre="pin" tam={16} /></button>
-    <span class="pista">Arrastra para girar la tienda</span>
+    <span class="pista">{eligiendo ? pista || 'Toca el estante, la caja, la mesa o la puerta · arrastra para girar' : 'Arrastra para girar la tienda'}</span>
   </div>
 {/if}
 
@@ -72,6 +134,9 @@
     display: block;
     cursor: grab;
     touch-action: none;
+  }
+  .eligiendo canvas {
+    cursor: pointer;
   }
   canvas:active {
     cursor: grabbing;

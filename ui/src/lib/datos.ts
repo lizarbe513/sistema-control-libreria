@@ -1,4 +1,6 @@
-// Datos de ejemplo del prototipo (en la app real vienen de la base de datos).
+// Tipos de la vista (los usan el libro 3D, la ficha y la ubicación) y los libros de ejemplo del modo demostración.
+// En la app real los libros vienen del backend (ver `aVista`).
+import type { LibroApi } from './api/tipos';
 import type { UbicacionLibro } from './tienda/modelo';
 
 export type CategoriaId =
@@ -27,14 +29,46 @@ export interface Libro {
   titulo: string;
   autor: string;
   editorial: string;
-  anio: number;
+  anio: number | null;
   categoria: CategoriaId;
   precio: number; // céntimos
   stock: number;
-  ubicacion: UbicacionLibro;
+  ubicacion: UbicacionLibro | null;
   tapa: string; // color de la portada generada
   formato: Formato;
   sinopsis: string;
+  codigo: string;
+  isbn: string | null;
+  /** URL lista para mostrar, o null (se usa la portada generada). */
+  portada: string | null;
+  stockMinimo: number;
+  /** Céntimos; null si quien mira no ve costos. */
+  costo: number | null;
+  etiquetas: string[];
+}
+
+/** Del formato del backend al de la vista. */
+export function aVista(l: LibroApi, urlPortada: (archivo: string) => string): Libro {
+  return {
+    id: l.id,
+    titulo: l.titulo,
+    autor: l.autor,
+    editorial: l.editorial,
+    anio: l.anio,
+    categoria: (l.categoria in CATEGORIAS ? l.categoria : 'otros') as CategoriaId,
+    precio: l.precioCent,
+    stock: l.stock,
+    ubicacion: l.ubicacion,
+    tapa: l.colorTapa,
+    formato: l.formato,
+    sinopsis: l.sinopsis,
+    codigo: l.codigo,
+    isbn: l.isbn,
+    portada: l.portada ? urlPortada(l.portada) : null,
+    stockMinimo: l.stockMinimo,
+    costo: l.costoCent,
+    etiquetas: l.etiquetas,
+  };
 }
 
 export const CATEGORIAS: Record<CategoriaId, Categoria> = {
@@ -68,22 +102,30 @@ const L = (
   tapa: string,
   formato: Formato,
   sinopsis: string,
-): Libro => ({
+): LibroApi => ({
   id,
+  isbn: null,
+  codigo: `SXXI-${String(id).padStart(6, '0')}`,
   titulo,
   autor,
   editorial,
   anio,
-  categoria,
-  precio,
-  stock,
-  ubicacion: ubicar(ubic),
-  tapa,
-  formato,
   sinopsis,
+  portada: null,
+  colorTapa: tapa,
+  formato,
+  categoria,
+  precioCent: precio,
+  costoCent: Math.round(precio * 0.6),
+  stock,
+  stockMinimo: 1,
+  ubicacion: ubicar(ubic),
+  etiquetas: [],
+  actualizado: '2026-10-14T00:00:00Z',
 });
 
-export const LIBROS: Libro[] = [
+/** Libros de ejemplo (del folleto) para el modo demostración en el navegador. */
+export const LIBROS_DEMO: LibroApi[] = [
   L(1, 'El Principito', 'Antoine de Saint-Exupéry', 'Salamandra', 2008, 'literarias', 3500, 4, 'A:1:3', '#6FA8DC', 'normal',
     'Un piloto perdido en el desierto conoce a un pequeño príncipe venido de otro planeta. Una fábula tierna sobre la amistad, el amor y lo esencial, que es invisible a los ojos.'),
   L(2, 'Cien años de soledad', 'Gabriel García Márquez', 'Debolsillo', 2015, 'literarias', 6900, 2, 'A:1:3', '#E9B949', 'grueso',
@@ -149,11 +191,3 @@ export const LIBROS: Libro[] = [
 export const soles = (cent: number) =>
   'S/ ' + (cent / 100).toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// Datos del inicio (ejemplo)
-export const RESUMEN_HOY = { total: 48650, ventas: 9, libros: 14 };
-
-export const ENCARGOS = [
-  { titulo: 'Harry Potter y la piedra filosofal', cliente: 'Lucía M.', estado: 'Pendiente', color: '#FCEFC7' },
-  { titulo: 'El arte de la guerra', cliente: 'Prof. Carlos R.', estado: 'Pedido al proveedor', color: '#E9E3FB' },
-  { titulo: 'Aritmética Lumbreras', cliente: 'Diego S.', estado: '¡Llegó! Avisar', color: '#DDF3E4' },
-];

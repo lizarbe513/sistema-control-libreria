@@ -4,6 +4,15 @@
   import { api } from '../api';
   import { cerrarSesion, esDuena, sesion } from '../sesion.svelte';
   import Usuarias from '../componentes/Usuarias.svelte';
+  import { inventario } from '../inventario.svelte';
+
+  async function cambiarPermiso(valor: boolean) {
+    try {
+      inventario.vendedoresEditan = await api.permisoVendedoresEditan(valor);
+    } catch (e) {
+      avisar((e as Error).message);
+    }
+  }
 
   let miPin = $state('');
   let cambiandoPin = $state(false);
@@ -71,6 +80,14 @@
       <h2 class="titulo-seccion">Usuarias y usuarios</h2>
       <p class="atenuado">Cada persona entra con su PIN. Los vendedores no ven costos ni reportes.</p>
       <Usuarias />
+      <label class="interruptor">
+        <div>
+          <strong>Los vendedores pueden agregar y editar libros</strong>
+          <span class="atenuado">Útil para la carga inicial del inventario. Nunca ven los costos.</span>
+        </div>
+        <input type="checkbox" checked={inventario.vendedoresEditan} onchange={(e) => cambiarPermiso(e.currentTarget.checked)} />
+        <span class="pastilla" aria-hidden="true"></span>
+      </label>
     </section>
   {/if}
 

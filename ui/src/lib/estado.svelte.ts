@@ -1,7 +1,7 @@
 // Estado global de la interfaz (runas de Svelte 5).
 import type { Libro } from './datos';
 
-export type Vista = 'inicio' | 'buscar' | 'vender' | 'encargos' | 'reportes' | 'asistente' | 'tienda' | 'ajustes';
+export type Vista = 'inicio' | 'buscar' | 'libros' | 'vender' | 'encargos' | 'reportes' | 'asistente' | 'tienda' | 'ajustes';
 export type FondoId = 'petalos' | 'estanque' | 'cielo';
 export type AnimLibro = 'aleatoria' | 'caida' | 'estante' | 'pluma' | 'trompo' | 'pop' | 'volteo';
 export type FondoOpcion = FondoId | 'hora' | 'quieto';
@@ -73,6 +73,8 @@ export const app = $state({
   /** Modo enfoque del editor de la tienda: solo la bibliotecaria y su biblioteca. */
   enfoque: false,
   fichaMovil: false,
+  /** Libro abierto en el formulario de «Libros»: un id, «nuevo», o ninguno. */
+  editar: null as number | 'nuevo' | null,
   toast: '' as string,
   hora: new Date().getHours(),
 });

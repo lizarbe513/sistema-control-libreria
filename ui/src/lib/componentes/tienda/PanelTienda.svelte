@@ -57,11 +57,15 @@
     avisar('Base vacía lista: ¡a construir! 🧱');
   }
 
-  function guardarComo() {
+  async function guardarComo() {
     const nombre = prompt('Nombre de la plantilla:', 'Mi tienda');
     if (nombre === null) return;
-    const p = tienda.guardarPlantilla(nombre);
-    avisar(`Plantilla «${p.nombre}» guardada`);
+    try {
+      const p = await tienda.guardarPlantilla(nombre);
+      avisar(`Plantilla «${p.nombre}» guardada`);
+    } catch (e) {
+      avisar((e as Error).message);
+    }
   }
 
   function cargar(id: string, nombre: string) {
@@ -72,7 +76,7 @@
   }
 
   function borrarPlantilla(id: string, nombre: string) {
-    if (confirm(`¿Borrar la plantilla «${nombre}»?`)) tienda.borrarPlantilla(id);
+    if (confirm(`¿Borrar la plantilla «${nombre}»?`)) tienda.borrarPlantilla(id).catch((e: Error) => avisar(e.message));
   }
 </script>
 
@@ -126,7 +130,7 @@
           <button
             class="estrella"
             class:activa={tienda.plantillaDefecto === p.id}
-            onclick={() => tienda.marcarDefecto(p.id)}
+            onclick={() => tienda.marcarDefecto(p.id).catch((e: Error) => avisar(e.message))}
             title={tienda.plantillaDefecto === p.id ? 'Plantilla por defecto' : 'Marcar como por defecto'}
             aria-label="Por defecto">{tienda.plantillaDefecto === p.id ? '★' : '☆'}</button
           >

@@ -8,8 +8,9 @@
   const ITEMS: { id: Vista; nombre: string; icono: NombreIcono; badge?: number }[] = [
     { id: 'inicio', nombre: 'Inicio', icono: 'inicio' },
     { id: 'buscar', nombre: 'Buscar', icono: 'buscar' },
+    { id: 'libros', nombre: 'Libros', icono: 'libro' },
     { id: 'vender', nombre: 'Vender', icono: 'carrito' },
-    { id: 'encargos', nombre: 'Encargos', icono: 'encargos', badge: 3 },
+    { id: 'encargos', nombre: 'Encargos', icono: 'encargos' },
     { id: 'reportes', nombre: 'Reportes', icono: 'reportes' },
     { id: 'asistente', nombre: 'Asistente', icono: 'asistente' },
     { id: 'tienda', nombre: 'Mi tienda', icono: 'estante' },

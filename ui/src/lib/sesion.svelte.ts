@@ -1,6 +1,8 @@
 // Sesión: qué fase muestra la app (configurar, desbloquear, entrar o la tienda) y quién atiende.
 import { api, type EstadoInicial, type Usuaria } from './api';
 import { aplicarPreferencias, app, avisar, olvidarPreferencias, registrarGuardadoPreferencias } from './estado.svelte';
+import { prepararInventario } from './inventario.svelte';
+import { tienda } from './tienda/tienda.svelte';
 
 export const sesion = $state({
   cargando: true,
@@ -49,6 +51,10 @@ export function entrarCon(u: Usuaria) {
   app.usuario = u.nombre;
   aplicarPreferencias(u.preferencias);
   if (sesion.estado) sesion.estado = { ...sesion.estado, fase: 'sesion', usuaria: u };
+  // datos que necesitan sesión: portadas, categorías y la tienda en bloques
+  Promise.all([prepararInventario(), tienda.sincronizar(u.rol === 'duena')]).catch((e: Error) =>
+    avisar(`No se pudieron cargar los datos: ${e.message}`),
+  );
 }
 
 export async function cerrarSesion() {

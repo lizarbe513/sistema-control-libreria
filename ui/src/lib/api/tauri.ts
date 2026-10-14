@@ -1,11 +1,26 @@
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { Api } from './contrato';
-import type { DatosConfiguracion, EstadoInicial, Rol, Usuaria } from './tipos';
+import type { Tienda } from '../tienda/modelo';
+import type {
+  CategoriaApi,
+  DatosConfiguracion,
+  EstadoInicial,
+  Filtros,
+  LibroApi,
+  LibroEntrada,
+  PlantillaApi,
+  PlantillasApi,
+  ResumenInventario,
+  Rol,
+  Sugerencia,
+  Usuaria,
+} from './tipos';
 
 /** Backend real: comandos de Rust por IPC. Los errores llegan como texto en español. */
 export class ApiTauri implements Api {
   readonly esDemo = false;
+  private rutaPortadas = '';
 
   private llamar<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
     return invoke<T>(cmd, args).catch((e: unknown) => {
@@ -46,5 +61,79 @@ export class ApiTauri implements Api {
   }
   cambiarPin(id: number, pin: string) {
     return this.llamar<void>('usuaria_cambiar_pin', { id, pin });
+  }
+
+  // ── inventario ──
+  categorias() {
+    return this.llamar<CategoriaApi[]>('categorias');
+  }
+  buscarLibros(consulta: string, filtros?: Filtros) {
+    return this.llamar<LibroApi[]>('libros_buscar', { consulta, filtros: filtros ?? null });
+  }
+  libro(id: number) {
+    return this.llamar<LibroApi>('libro_obtener', { id });
+  }
+  guardarLibro(entrada: LibroEntrada) {
+    return this.llamar<LibroApi>('libro_guardar', { entrada });
+  }
+  desactivarLibro(id: number) {
+    return this.llamar<void>('libro_desactivar', { id });
+  }
+  ajustarStock(id: number, delta: number, motivo: 'ingreso' | 'ajuste', nota?: string) {
+    return this.llamar<LibroApi>('stock_ajustar', { id, delta, motivo, nota: nota ?? null });
+  }
+  resumenInventario() {
+    return this.llamar<ResumenInventario>('inventario_resumen');
+  }
+  consultarIsbn(isbn: string) {
+    return this.llamar<Sugerencia>('isbn_consultar', { isbn });
+  }
+  portadaDesdeUrl(id: number, url: string) {
+    return this.llamar<LibroApi>('portada_desde_url', { id, url });
+  }
+  portadaDesdeArchivo(id: number, origen: string) {
+    return this.llamar<LibroApi>('portada_desde_archivo', { id, ruta: origen });
+  }
+  quitarPortada(id: number) {
+    return this.llamar<LibroApi>('portada_quitar', { id });
+  }
+  async elegirImagen() {
+    const r = await open({
+      multiple: false,
+      directory: false,
+      title: 'Elegir la portada',
+      filters: [{ name: 'Imágenes', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }],
+    });
+    return typeof r === 'string' ? r : null;
+  }
+  urlPortada(archivo: string) {
+    const sep = this.rutaPortadas.includes('\\') ? '\\' : '/';
+    return convertFileSrc(`${this.rutaPortadas}${sep}${archivo}`);
+  }
+  async prepararPortadas() {
+    this.rutaPortadas = await this.llamar<string>('ruta_portadas');
+  }
+  permisoVendedoresEditan(valor?: boolean) {
+    return this.llamar<boolean>('permiso_vendedores_editan', { valor: valor ?? null });
+  }
+
+  // ── tienda ──
+  cargarTienda() {
+    return this.llamar<Tienda | null>('tienda_cargar');
+  }
+  guardarTienda(tienda: Tienda) {
+    return this.llamar<void>('tienda_guardar', { tienda });
+  }
+  plantillas() {
+    return this.llamar<PlantillasApi>('plantillas_listar');
+  }
+  guardarPlantilla(nombre: string, tienda: Tienda) {
+    return this.llamar<PlantillaApi>('plantilla_guardar', { nombre, tienda });
+  }
+  borrarPlantilla(id: string) {
+    return this.llamar<void>('plantilla_borrar', { id });
+  }
+  fijarPlantillaDefecto(id: string | null) {
+    return this.llamar<void>('plantilla_defecto', { id });
   }
 }

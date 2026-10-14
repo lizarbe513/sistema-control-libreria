@@ -156,12 +156,14 @@
     // tapa delantera con bisagra en el lomo
     const b = new THREE.Group();
     b.position.set(-w / 2, 0, d / 2 - TAPA / 2);
+    const matPortada = new THREE.MeshStandardMaterial({ map: texturaCanvas(portada(l)), roughness: 0.55 });
+    if (l.portada) ponerPortadaReal(l.portada, matPortada, l.id);
     const frente = new THREE.Mesh(new THREE.BoxGeometry(w, h, TAPA), [
       tela(),
       tela(),
       tela(),
       tela(),
-      new THREE.MeshStandardMaterial({ map: texturaCanvas(portada(l)), roughness: 0.55 }),
+      matPortada,
       new THREE.MeshStandardMaterial({ color: new THREE.Color(tono(l.tapa, 0.8)), roughness: 0.9 }),
     ]);
     frente.position.x = w / 2;
@@ -170,6 +172,29 @@
 
     bisagra = b;
     return g;
+  }
+
+  /** La portada guardada (o descargada) reemplaza a la generada cuando termina de cargar. */
+  function ponerPortadaReal(url: string, mat: THREE.MeshStandardMaterial, id: number) {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (idActual !== id) return; // ya se eligió otro libro
+      const c = document.createElement('canvas');
+      c.width = 512;
+      c.height = 768;
+      const x = c.getContext('2d')!;
+      // «cover»: llena la tapa sin deformar
+      const k = Math.max(c.width / img.width, c.height / img.height);
+      const dw = img.width * k;
+      const dh = img.height * k;
+      x.drawImage(img, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
+      const anterior = mat.map;
+      mat.map = texturaCanvas(c);
+      mat.needsUpdate = true;
+      anterior?.dispose();
+    };
+    img.src = url; // si falla, queda la portada generada
   }
 
   function nuevoLibro(l: Libro) {

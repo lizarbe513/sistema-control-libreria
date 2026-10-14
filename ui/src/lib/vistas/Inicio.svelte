@@ -1,15 +1,24 @@
 <script lang="ts">
   import Icono from '../componentes/Icono.svelte';
-  import { ENCARGOS, LIBROS, RESUMEN_HOY, soles } from '../datos';
+  import { api, type ResumenInventario } from '../api';
+  import type { Libro } from '../datos';
   import { app, avisar, saludo } from '../estado.svelte';
+  import { inventario, vista } from '../inventario.svelte';
 
   let { movil = false }: { movil?: boolean } = $props();
 
   const deNoche = $derived(app.hora >= 19 || app.hora < 5);
-  const stockBajo = LIBROS.filter((l) => l.stock <= 1).slice(0, 4);
+  let resumen = $state<ResumenInventario | null>(null);
+  const stockBajo = $derived<Libro[]>((resumen?.stockBajo ?? []).slice(0, 4).map(vista));
+  const k = $derived(resumen?.contadores);
 
-  function abrirLibro(id: number) {
-    app.seleccionado = LIBROS.find((l) => l.id === id) ?? null;
+  $effect(() => {
+    void inventario.version;
+    api.resumenInventario().then((r) => (resumen = r)).catch((e: Error) => avisar(e.message));
+  });
+
+  function abrirLibro(l: Libro) {
+    app.seleccionado = l;
     if (movil) app.fichaMovil = true;
     else app.vista = 'buscar';
   }
@@ -59,7 +68,7 @@
 
   <div class="rejilla" data-vacio>
     <section class="resumen">
-      <span class="sobre">Resumen de hoy</span>
+      <span class="sobre">Tu inventario</span>
       <div class="cuerpo">
         <svg class="pila" width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
           <rect x="14" y="60" width="70" height="16" rx="5" fill="#fff" opacity="0.95" />
@@ -70,11 +79,19 @@
           <path d="M74 18l3 3 5-6" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" />
         </svg>
         <div>
-          <strong class="monto">{soles(RESUMEN_HOY.total)}</strong>
-          <p>{RESUMEN_HOY.ventas} ventas · {RESUMEN_HOY.libros} libros vendidos.<br />¡Vas muy bien hoy! 💕</p>
+          <strong class="monto">{k ? k.libros : '…'} <small>{k?.libros === 1 ? 'libro' : 'libros'}</small></strong>
+          <p>
+            {#if k && k.libros}
+              {k.unidades} ejemplares en la tienda{#if k.sinUbicacion} · {k.sinUbicacion} sin ubicación{/if}.<br />Las ventas del día aparecerán aquí 💕
+            {:else}
+              Aún no hay libros cargados.<br />¡Empecemos por el primero! 💕
+            {/if}
+          </p>
         </div>
       </div>
-      <button class="btn btn-blanco" onclick={() => (app.vista = 'vender')}>Nueva venta <Icono nombre="flecha" tam={18} /></button>
+      <button class="btn btn-blanco" onclick={() => (app.vista = 'libros')}>
+        {k?.libros ? 'Ver libros' : 'Agregar libros'} <Icono nombre="flecha" tam={18} />
+      </button>
     </section>
 
     <section class="bloque">
@@ -82,31 +99,31 @@
         <h2 class="titulo-seccion">Encargos pendientes</h2>
         <button class="enlace" onclick={() => (app.vista = 'encargos')}>Ver todos</button>
       </div>
-      {#each ENCARGOS as e}
-        <div class="fila" style:background={e.color}>
-          <span class="icono-fila"><Icono nombre="encargos" tam={18} /></span>
-          <div class="fila-texto">
-            <strong>{e.titulo}</strong>
-            <span>{e.cliente}</span>
-          </div>
-          <span class="estado-encargo">{e.estado}</span>
-        </div>
-      {/each}
+      <div class="vacio-bloque">
+        <Icono nombre="encargos" tam={26} />
+        <p>Aún no hay encargos. Cuando un libro no esté, usa <b>«¿Lo encargamos?»</b> en la búsqueda.</p>
+      </div>
     </section>
 
     <section class="bloque">
       <div class="titulo-fila">
         <h2 class="titulo-seccion">Quedan pocos</h2>
-        <span class="atenuado pequeño">stock ≤ 1</span>
+        <span class="atenuado pequeño">{k ? `${k.sinStock} agotados · ${k.stockBajo} por agotarse` : ''}</span>
       </div>
-      {#each stockBajo as l}
-        <button class="fila libro-fila tarjeta" onclick={() => abrirLibro(l.id)}>
+      {#if resumen && !stockBajo.length}
+        <div class="vacio-bloque">
+          <span class="emoji">🌸</span>
+          <p>Todo bien abastecido por ahora.</p>
+        </div>
+      {/if}
+      {#each stockBajo as l (l.id)}
+        <button class="fila libro-fila tarjeta" onclick={() => abrirLibro(l)}>
           <span class="lomo" style:background={l.tapa}></span>
           <div class="fila-texto">
             <strong>{l.titulo}</strong>
             <span>{l.autor}</span>
           </div>
-          <span class="cuantos" class:cero={l.stock === 0}>{l.stock === 0 ? 'Agotado' : 'Queda 1'}</span>
+          <span class="cuantos" class:cero={l.stock === 0}>{l.stock === 0 ? 'Agotado' : l.stock === 1 ? 'Queda 1' : `Quedan ${l.stock}`}</span>
         </button>
       {/each}
     </section>
@@ -123,6 +140,25 @@
 </div>
 
 <style>
+  .vacio-bloque {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 16px;
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  .vacio-bloque p {
+    margin: 0;
+    font-size: 14px;
+  }
+  .vacio-bloque .emoji {
+    font-size: 24px;
+  }
+  .monto small {
+    font-size: 18px;
+  }
   .inicio {
     display: flex;
     flex-direction: column;
@@ -264,16 +300,6 @@
   :global([data-tema='noche']) .fila:not(.tarjeta) {
     color: #2b2b2b;
   }
-  .icono-fila {
-    width: 34px;
-    height: 34px;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.7);
-    display: grid;
-    place-items: center;
-    color: var(--primary-strong);
-    flex: none;
-  }
   .fila-texto {
     display: flex;
     flex-direction: column;
@@ -289,11 +315,6 @@
   .fila-texto span {
     font-size: 12px;
     opacity: 0.7;
-  }
-  .estado-encargo {
-    font-size: 12px;
-    font-weight: 800;
-    white-space: nowrap;
   }
   .libro-fila {
     transition: transform 0.15s;

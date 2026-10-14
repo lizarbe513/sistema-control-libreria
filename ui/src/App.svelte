@@ -12,6 +12,7 @@
   import Ajustes from './lib/vistas/Ajustes.svelte';
   import Buscar from './lib/vistas/Buscar.svelte';
   import EditorTienda from './lib/vistas/EditorTienda.svelte';
+  import Libros from './lib/vistas/Libros.svelte';
   import Inicio from './lib/vistas/Inicio.svelte';
   import Pendiente from './lib/vistas/Pendiente.svelte';
   import Bienvenida from './lib/acceso/Bienvenida.svelte';
@@ -82,6 +83,8 @@
             <Inicio />
           {:else if app.vista === 'buscar'}
             <Buscar />
+          {:else if app.vista === 'libros'}
+            <Libros />
           {:else if app.vista === 'ajustes'}
             <Ajustes />
           {:else if app.vista === 'tienda'}

@@ -4,9 +4,10 @@
   import { flip } from 'svelte/animate';
   import { fly } from 'svelte/transition';
   import Icono from '../componentes/Icono.svelte';
-  import { buscar } from '../busqueda';
-  import { CATEGORIAS, LIBROS, soles, type CategoriaId, type Libro } from '../datos';
+  import { api } from '../api';
+  import { CATEGORIAS, soles, type CategoriaId, type Libro } from '../datos';
   import { app, avisar } from '../estado.svelte';
+  import { inventario, vista } from '../inventario.svelte';
   import { miniatura } from '../portada';
 
   let { movil = false }: { movil?: boolean } = $props();
@@ -15,11 +16,41 @@
 
   const SUGERENCIAS = ['principito', 'lumbreras', 'biblia', 'arguedas', 'cuentos', 'kiyosaki'];
 
-  const resultados = $derived.by(() => {
-    const base = app.consulta.trim() ? buscar(LIBROS, app.consulta) : LIBROS;
-    return categoria ? base.filter((l) => l.categoria === categoria) : base;
-  });
+  let resultados = $state<Libro[]>([]);
+  let total = $state<number | null>(null);
+  let cargando = $state(true);
   const buscando = $derived(app.consulta.trim().length > 0 || categoria !== null);
+
+  // consulta al backend con una pequeña espera mientras se escribe
+  $effect(() => {
+    const q = app.consulta;
+    const filtros = { categoria };
+    void inventario.version;
+    let vigente = true;
+    const t = setTimeout(async () => {
+      try {
+        const r = await api.buscarLibros(q, filtros);
+        if (!vigente) return;
+        resultados = r.map(vista);
+        // la ficha abierta se actualiza si el libro cambió (por ejemplo, tras editarlo)
+        const abierto = app.seleccionado && resultados.find((l) => l.id === app.seleccionado!.id);
+        if (abierto) app.seleccionado = abierto;
+      } catch (e) {
+        if (vigente) avisar((e as Error).message);
+      } finally {
+        if (vigente) cargando = false;
+      }
+    }, q.trim() ? 120 : 0);
+    return () => {
+      vigente = false;
+      clearTimeout(t);
+    };
+  });
+
+  $effect(() => {
+    void inventario.version;
+    api.resumenInventario().then((r) => (total = r.contadores.libros)).catch(() => {});
+  });
 
   function elegir(l: Libro) {
     app.seleccionado = l;
@@ -73,16 +104,18 @@
   {/if}
 
   <div class="encabezado" data-vacio>
-    <h2 class="titulo-seccion">{buscando ? `${resultados.length} ${resultados.length === 1 ? 'resultado' : 'resultados'}` : `Todo el catálogo (${LIBROS.length})`}</h2>
+    <h2 class="titulo-seccion">
+      {buscando ? `${resultados.length} ${resultados.length === 1 ? 'resultado' : 'resultados'}` : `Todo el catálogo (${total ?? '…'})`}
+    </h2>
     {#if buscando && resultados.length}<span class="atenuado pista">Enter abre el primero</span>{/if}
   </div>
 
   {#if resultados.length}
     <div class="resultados" data-vacio>
       {#each resultados as l (l.id)}
-        {@const u = resolver(tienda.datos, l.ubicacion)}
+        {@const u = l.ubicacion ? resolver(tienda.datos, l.ubicacion) : null}
         <button class="libro tarjeta" class:elegido={app.seleccionado?.id === l.id} onclick={() => elegir(l)} animate:flip={{ duration: 300 }}>
-          <img src={miniatura(l)} alt="" />
+          <img src={l.portada ?? miniatura(l)} alt="" />
           <div class="info">
             <strong>{l.titulo}</strong>
             <span class="autor">{l.autor}</span>
@@ -97,6 +130,15 @@
           </div>
         </button>
       {/each}
+    </div>
+  {:else if cargando}
+    <p class="atenuado">Buscando…</p>
+  {:else if !buscando && total === 0}
+    <div class="no-encontrado" in:fly={{ y: 16, duration: 400 }}>
+      <div class="vacio">📚</div>
+      <h3>Todavía no hay libros</h3>
+      <p>Empieza a cargar el inventario: cada libro guarda su estante, tramo y repisa.</p>
+      <button class="btn btn-primario" onclick={() => (app.vista = 'libros')}><Icono nombre="mas" tam={18} /> Agregar libros</button>
     </div>
   {:else}
     <div class="no-encontrado" in:fly={{ y: 16, duration: 400 }}>
@@ -122,6 +164,9 @@
 </div>
 
 <style>
+  .vacio {
+    font-size: 64px;
+  }
   .buscar {
     display: flex;
     flex-direction: column;

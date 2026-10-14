@@ -1,7 +1,7 @@
-// Estado reactivo de la tienda con deshacer/rehacer y guardado automático.
-// En el prototipo se guarda en localStorage; en la app irá a la base de datos cifrada.
+// Estado reactivo de la tienda con deshacer/rehacer y guardado automático en la base (vía la Api).
 
-import { guardar, leer } from '../estado.svelte';
+import { api } from '../api';
+import { avisar } from '../estado.svelte';
 import {
   clave,
   columnas,
@@ -25,7 +25,6 @@ export interface Plantilla {
 
 const INCLUIDA: Plantilla = { id: 'siglo-xxi', nombre: 'SIGLO XXI (croquis)', tienda: null };
 
-const VERSION = 2;
 
 /** Medidas en celdas de 0,5 m: interior (ancho × largo), vereda y altura. */
 export interface Medidas {
@@ -79,33 +78,40 @@ function limpiar(t: Tienda): Tienda {
   return estantes.length === t.estantes.length && estantes.every((e, i) => e === t.estantes[i]) ? t : { ...t, estantes };
 }
 
-function leerPlantillas(): Plantilla[] {
-  const g = leer<{ v: number; lista: Plantilla[] } | null>('plantillas', null);
-  return [INCLUIDA, ...(g && g.v === VERSION ? g.lista.filter((p) => p.id !== INCLUIDA.id) : [])];
-}
-
 const copia = (t: Tienda): Tienda => JSON.parse(JSON.stringify(t));
 
 function tiendaDePlantilla(p: Plantilla | undefined): Tienda {
   return p?.tienda ? copia(p.tienda) : plantillaSigloXXI();
 }
 
-function cargar(): Tienda {
-  const g = leer<{ v: number; t: Tienda } | null>('tienda', null);
-  if (g && g.v === VERSION && Array.isArray(g.t?.bloques)) return g.t;
-  const defecto = leer<string>('plantillaDefecto', INCLUIDA.id);
-  return tiendaDePlantilla(leerPlantillas().find((p) => p.id === defecto));
-}
-
 class Almacen {
-  datos = $state.raw<Tienda>(cargar());
+  datos = $state.raw<Tienda>(plantillaSigloXXI());
   puedeDeshacer = $state(false);
   puedeRehacer = $state(false);
-  plantillas = $state.raw<Plantilla[]>(leerPlantillas());
-  plantillaDefecto = $state(leer<string>('plantillaDefecto', INCLUIDA.id));
+  plantillas = $state.raw<Plantilla[]>([INCLUIDA]);
+  plantillaDefecto = $state(INCLUIDA.id);
+  /** Solo la Dueña guarda cambios de la tienda. */
+  private editable = false;
   private pasado: Tienda[] = [];
   private futuro: Tienda[] = [];
   private espera = 0;
+
+  /** Al entrar: trae la tienda y las plantillas de la base. La primera vez guarda la plantilla por defecto. */
+  async sincronizar(editable: boolean) {
+    this.editable = editable;
+    const [guardada, ps] = await Promise.all([api.cargarTienda(), api.plantillas()]);
+    this.plantillas = [INCLUIDA, ...ps.lista.map((p) => ({ id: p.id, nombre: p.nombre, tienda: p.tienda }))];
+    this.plantillaDefecto = ps.defecto ?? INCLUIDA.id;
+    this.pasado = [];
+    this.futuro = [];
+    this.puedeDeshacer = this.puedeRehacer = false;
+    if (guardada) {
+      this.datos = guardada;
+    } else {
+      this.datos = tiendaDePlantilla(this.plantillas.find((p) => p.id === this.plantillaDefecto));
+      if (editable) await api.guardarTienda(this.datos).catch(() => {});
+    }
+  }
 
   private aplicar(nuevo: Tienda) {
     this.pasado.push(this.datos);
@@ -119,7 +125,10 @@ class Almacen {
     this.puedeDeshacer = this.pasado.length > 0;
     this.puedeRehacer = this.futuro.length > 0;
     clearTimeout(this.espera);
-    this.espera = window.setTimeout(() => guardar('tienda', { v: VERSION, t: this.datos }), 300);
+    if (!this.editable) return;
+    this.espera = window.setTimeout(() => {
+      api.guardarTienda(this.datos).catch((e: Error) => avisar(`No se guardó la tienda: ${e.message}`));
+    }, 400);
   }
 
   dentro(x: number, y: number, z: number) {
@@ -325,15 +334,9 @@ class Almacen {
 
   // ───── plantillas con nombre ─────
 
-  private guardarPlantillas() {
-    guardar('plantillas', { v: VERSION, lista: this.plantillas.filter((p) => p.id !== INCLUIDA.id) });
-    guardar('plantillaDefecto', this.plantillaDefecto);
-  }
-
-  guardarPlantilla(nombre: string) {
-    const p: Plantilla = { id: `p${Date.now().toString(36)}`, nombre: nombre.trim() || 'Mi plantilla', tienda: copia(this.datos) };
-    this.plantillas = [...this.plantillas, p];
-    this.guardarPlantillas();
+  async guardarPlantilla(nombre: string) {
+    const p = await api.guardarPlantilla(nombre, copia(this.datos));
+    this.plantillas = [...this.plantillas, { id: p.id, nombre: p.nombre, tienda: p.tienda }];
     return p;
   }
 
@@ -342,16 +345,16 @@ class Almacen {
     if (p) this.aplicar(tiendaDePlantilla(p));
   }
 
-  marcarDefecto(id: string) {
+  async marcarDefecto(id: string) {
+    await api.fijarPlantillaDefecto(id === INCLUIDA.id ? null : id);
     this.plantillaDefecto = id;
-    this.guardarPlantillas();
   }
 
-  borrarPlantilla(id: string) {
+  async borrarPlantilla(id: string) {
     if (id === INCLUIDA.id) return;
+    await api.borrarPlantilla(id);
     this.plantillas = this.plantillas.filter((p) => p.id !== id);
     if (this.plantillaDefecto === id) this.plantillaDefecto = INCLUIDA.id;
-    this.guardarPlantillas();
   }
 
   borrarEstante(id: string) {

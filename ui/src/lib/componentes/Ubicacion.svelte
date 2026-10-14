@@ -6,7 +6,7 @@
   import Tienda3D from './Tienda3D.svelte';
 
   let { libro }: { libro: Libro } = $props();
-  const u = $derived(resolver(tienda.datos, libro.ubicacion));
+  const u = $derived(libro.ubicacion ? resolver(tienda.datos, libro.ubicacion) : null);
   const terminos = $derived(u ? infoTipo(u.tipo).terminos : undefined);
   const simple = $derived(typeof terminos !== 'object');
 </script>
@@ -35,8 +35,13 @@
     {:else}
       <div class="texto">
         <span class="donde">Ubicación</span>
-        <strong class="medio">Sin asignar</strong>
-        <span class="nombre">Ubicación por revisar: ese estante o compartimento ya no existe en «Mi tienda».</span>
+        {#if libro.ubicacion}
+          <strong class="medio">Por revisar</strong>
+          <span class="nombre">Ese estante o compartimento ya no existe en «Mi tienda». Elige otro en Libros.</span>
+        {:else}
+          <strong class="medio">Sin ubicación</strong>
+          <span class="nombre">Todavía no se eligió dónde va. Edítalo en Libros y tócalo en la tienda.</span>
+        {/if}
       </div>
     {/if}
   </div>

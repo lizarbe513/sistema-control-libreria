@@ -1,6 +1,11 @@
 <script lang="ts">
   import { CATEGORIAS, soles, type Libro } from '../datos';
-  import { avisar } from '../estado.svelte';
+  import { app, avisar } from '../estado.svelte';
+  import { inventario } from '../inventario.svelte';
+  import { esDuena } from '../sesion.svelte';
+
+  const puedeEditar = $derived(esDuena() || inventario.vendedoresEditan);
+  const PRONTO = 'Las ventas y los encargos llegan en la próxima etapa del programa 🌱';
   import Icono from './Icono.svelte';
   import Libro3D from './Libro3D.svelte';
   import Ubicacion from './Ubicacion.svelte';
@@ -27,7 +32,9 @@
         <p class="autor">{libro.autor}</p>
         <div class="chips">
           <span class="chip" style:background={CATEGORIAS[libro.categoria].color}>{CATEGORIAS[libro.categoria].nombre}</span>
-          <span class="chip neutro">{libro.editorial} · {libro.anio}</span>
+          {#if libro.editorial || libro.anio}
+            <span class="chip neutro">{[libro.editorial, libro.anio].filter(Boolean).join(' · ')}</span>
+          {/if}
         </div>
         <div class="precio-fila">
           <span class="precio">{soles(libro.precio)}</span>
@@ -41,17 +48,25 @@
 
       <div class="acciones">
         {#if libro.stock > 0}
-          <button class="btn btn-primario" onclick={() => avisar(`“${libro.titulo}” agregado a la venta 🛍️`)}>
+          <button class="btn btn-primario" onclick={() => avisar(PRONTO)}>
             <Icono nombre="carrito" tam={18} /> Vender
           </button>
-          <button class="btn btn-suave" onclick={() => avisar('Encargo creado para este libro 📦')}>Encargar más</button>
         {:else}
           <div class="aviso-agotado">
             Este libro está agotado. ¿El cliente lo quiere igual? Haz un encargo y te avisamos cuando llegue.
           </div>
-          <button class="btn btn-primario" onclick={() => avisar('Encargo creado 📦 — avisaremos al cliente por WhatsApp')}>
+          <button class="btn btn-primario" onclick={() => avisar(PRONTO)}>
             <Icono nombre="encargos" tam={18} /> ¿Lo encargamos?
           </button>
+        {/if}
+        {#if puedeEditar}
+          <button
+            class="btn btn-suave"
+            onclick={() => {
+              app.editar = libro.id;
+              app.vista = 'libros';
+            }}><Icono nombre="nota" tam={18} /> Editar</button
+          >
         {/if}
       </div>
     {/key}
