@@ -286,6 +286,12 @@ export interface Encargo {
   colorTapa: string | null;
   formato: Formato | null;
   categoria: string | null;
+  /** Costo del proveedor, si se anotó. */
+  costoCent: number | null;
+  /** Precio que se le dijo al cliente (costo + margen, o el que se escribió). */
+  precioAcordadoCent: number | null;
+  /** Portada de referencia (búsqueda en internet) mientras el libro no está en el inventario. */
+  portadaUrl: string | null;
 }
 export interface EncargoEntrada {
   clienteId?: number | null;
@@ -297,4 +303,8 @@ export interface EncargoEntrada {
   cantidad?: number;
   notas?: string;
   adelanto?: { metodo: Metodo; montoCent: number } | null;
+  costoCent?: number | null;
+  /** Sin precio y con costo, el backend calcula costo + margen. */
+  precioAcordadoCent?: number | null;
+  portadaUrl?: string | null;
 }

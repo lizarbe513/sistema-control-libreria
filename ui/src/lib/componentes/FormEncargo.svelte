@@ -1,13 +1,15 @@
 <script lang="ts">
   // Nuevo encargo: quién lo pide, qué libro (del inventario o escrito a mano), cantidad, notas y adelanto opcional.
   import { fly } from 'svelte/transition';
-  import { api, type Cliente, type Metodo } from '../api';
+  import { api, type Cliente, type Metodo, type ResultadoLinea } from '../api';
   import { soles, type Libro } from '../datos';
   import { avisar } from '../estado.svelte';
   import { encargosCambio, type Precarga } from '../encargos.svelte';
-  import { aCentimos, vista } from '../inventario.svelte';
+  import { aCentimos, aSoles, buscarExistente, vista } from '../inventario.svelte';
   import { miniatura } from '../portada';
   import { carrito, METODOS } from '../ventas/carrito.svelte';
+  import { precioConMargen } from '../ventas/calculo';
+  import BuscadorLinea from './BuscadorLinea.svelte';
   import Icono from './Icono.svelte';
   import IconoMetodo from './IconoMetodo.svelte';
 
@@ -34,7 +36,29 @@
 
   // ── libro ──
   // svelte-ignore state_referenced_locally
-  let modoLibro = $state<'inventario' | 'mano'>(precarga.libroId || !precarga.titulo ? 'inventario' : 'mano');
+  let modoLibro = $state<'inventario' | 'internet' | 'mano'>(precarga.libroId || !precarga.titulo ? 'inventario' : 'internet');
+  /** Libro elegido en la búsqueda en internet (aún no está en el inventario). */
+  let hallado = $state<ResultadoLinea | null>(null);
+  let yaLoTenia = $state<Libro | null>(null);
+
+  async function elegirEnLinea(r: ResultadoLinea) {
+    hallado = r;
+    titulo = r.titulo;
+    autor = r.autor;
+    costoTexto = '';
+    precioTexto = '';
+    yaLoTenia = null;
+    // si ya lo habíamos tenido en la tienda, se usa ese mismo libro (con su precio)
+    try {
+      const l = await buscarExistente(r);
+      if (hallado === r && l) {
+        yaLoTenia = l;
+        libro = l;
+      }
+    } catch {
+      /* sin la comprobación, igual se puede encargar */
+    }
+  }
   let libro = $state<Libro | null>(null);
   // svelte-ignore state_referenced_locally
   let textoLibro = $state(precarga.titulo ?? '');
@@ -60,11 +84,25 @@
   let conAdelanto = $state(false);
   let adelantoTexto = $state('');
   let adelantoMetodo = $state<Metodo>('efectivo');
+
+  // ── precio: el del libro si ya está en la tienda; si no, costo del proveedor + margen ──
+  let margen = $state(30);
+  api.margenEncargos().then((m) => (margen = m)).catch(() => {});
+  let costoTexto = $state('');
+  let precioTexto = $state('');
+  const costo = $derived(costoTexto.trim() ? aCentimos(costoTexto) : null);
+  const sugerido = $derived(costo ? precioConMargen(costo, margen) : null);
+  const precioFinal = $derived(libro ? libro.precio : precioTexto.trim() ? aCentimos(precioTexto) : sugerido);
+  const total = $derived(precioFinal != null ? precioFinal * cantidad : null);
+  const ganancia = $derived(!libro && costo && precioFinal ? precioFinal - costo : null);
   let guardando = $state(false);
   let error = $state('');
 
   const listo = $derived(
-    (cliente || (modoCliente === 'nuevo' && nuevoNombre.trim())) && (libro || (modoLibro === 'mano' && titulo.trim())) && cantidad >= 1,
+    (cliente || (modoCliente === 'nuevo' && nuevoNombre.trim())) &&
+      (libro || ((modoLibro === 'mano' || (modoLibro === 'internet' && hallado)) && titulo.trim())) &&
+      cantidad >= 1 &&
+      costoTexto.trim() === (costo === null ? '' : costoTexto.trim()),
   );
 
   async function guardar(e: SubmitEvent) {
@@ -80,6 +118,9 @@
         libroId: libro?.id ?? null,
         titulo: libro ? '' : titulo,
         autor: libro ? '' : autor,
+        costoCent: libro ? null : costo,
+        precioAcordadoCent: libro ? libro.precio : precioTexto.trim() ? aCentimos(precioTexto) : null,
+        portadaUrl: libro ? null : (hallado?.portadaUrl ?? null),
         cantidad,
         notas,
         adelanto: adelanto ? { metodo: adelantoMetodo, montoCent: adelanto } : null,
@@ -149,12 +190,16 @@
         <div class="elegido libro">
           <img src={libro.portada ?? miniatura(libro)} alt="" />
           <span><strong>{libro.titulo}</strong><small>{libro.autor} · {soles(libro.precio)} · {libro.stock ? `${libro.stock} en stock` : 'agotado'}</small></span>
-          <button type="button" class="enlace" onclick={() => (libro = null)}>Cambiar</button>
+          <button type="button" class="enlace" onclick={() => ((libro = null), (yaLoTenia = null))}>Cambiar</button>
         </div>
+        {#if yaLoTenia}
+          <p class="nota ok">✅ Ya lo habíamos tenido en la tienda: se usa ese mismo libro y su precio.</p>
+        {/if}
       {:else}
         <div class="seg" role="tablist">
           <button type="button" role="tab" aria-selected={modoLibro === 'inventario'} class:on={modoLibro === 'inventario'} onclick={() => (modoLibro = 'inventario')}>Del inventario</button>
-          <button type="button" role="tab" aria-selected={modoLibro === 'mano'} class:on={modoLibro === 'mano'} onclick={() => (modoLibro = 'mano')}>No lo tenemos (escribirlo)</button>
+          <button type="button" role="tab" aria-selected={modoLibro === 'internet'} class:on={modoLibro === 'internet'} onclick={() => (modoLibro = 'internet')}>🔎 Buscar en internet</button>
+          <button type="button" role="tab" aria-selected={modoLibro === 'mano'} class:on={modoLibro === 'mano'} onclick={() => (modoLibro = 'mano')}>Escribirlo</button>
         </div>
         {#if modoLibro === 'inventario'}
           <input bind:value={textoLibro} placeholder="Título, autor o ISBN…" aria-label="Buscar libro del inventario" />
@@ -170,6 +215,16 @@
               <li class="vacio">No está en el inventario. <button type="button" class="enlace" onclick={() => ((modoLibro = 'mano'), (titulo = textoLibro))}>Escribirlo a mano</button></li>
             {/each}
           </ul>
+        {:else if modoLibro === 'internet'}
+          {#if hallado}
+            <div class="elegido libro">
+              {#if hallado.portadaUrl}<img src={hallado.portadaUrl} alt="" />{/if}
+              <span><strong>{hallado.titulo}</strong><small>{[hallado.autor, hallado.editorial, hallado.anio].filter(Boolean).join(' · ')}</small></span>
+              <button type="button" class="enlace" onclick={() => ((hallado = null), (titulo = ''), (autor = ''))}>Cambiar</button>
+            </div>
+          {:else}
+            <BuscadorLinea onElegir={elegirEnLinea} />
+          {/if}
         {:else}
           <div class="dos">
             <label>Título<input bind:value={titulo} maxlength="200" placeholder="Los ríos profundos" /></label>
@@ -182,6 +237,35 @@
         <label><span>Notas <small>(opcional)</small></span><input bind:value={notas} maxlength="300" placeholder="Edición de bolsillo, para el lunes…" /></label>
       </div>
     </section>
+
+    {#if libro || hallado || (modoLibro === 'mano' && titulo.trim())}
+      <section class="precio" data-testid="precio-encargo">
+        <h3>Precio</h3>
+        {#if libro}
+          <p class="linea">Precio en la tienda: <strong>{soles(libro.precio)}</strong>{#if cantidad > 1} · {cantidad} ejemplares: <strong>{soles(libro.precio * cantidad)}</strong>{/if}</p>
+        {:else}
+          <div class="dos">
+            <label><span>Costo del proveedor <small>(opcional)</small></span><input bind:value={costoTexto} inputmode="decimal" placeholder="20.00" aria-label="Costo del proveedor" /></label>
+            <label><span>Margen de ganancia</span><input value="{margen} %" disabled aria-label="Margen de ganancia" /></label>
+          </div>
+          {#if sugerido}
+            <p class="linea">Precio de venta sugerido: <strong data-testid="precio-sugerido">{soles(sugerido)}</strong> <small>(costo {soles(costo ?? 0)} + {margen} %)</small></p>
+            <label class="corto">
+              <span>Precio final al cliente (S/)</span>
+              <input bind:value={precioTexto} inputmode="decimal" placeholder={aSoles(sugerido)} aria-label="Precio final" />
+            </label>
+            {#if ganancia != null}<p class="nota">Ganancia por ejemplar: {soles(ganancia)}</p>{/if}
+          {:else}
+            <p class="nota">Sin costo no se calcula el precio. Puedes dejarlo vacío o escribir el precio final directo.</p>
+            <label class="corto">
+              <span>Precio final al cliente (S/) <small>(opcional)</small></span>
+              <input bind:value={precioTexto} inputmode="decimal" placeholder="35.00" aria-label="Precio final" />
+            </label>
+          {/if}
+        {/if}
+        {#if total != null && cantidad > 1}<p class="linea">Total: <strong>{soles(total)}</strong></p>{/if}
+      </section>
+    {/if}
 
     <section>
       <label class="check"><input type="checkbox" bind:checked={conAdelanto} /> Deja un adelanto</label>
@@ -373,6 +457,29 @@
     color: var(--primary-strong);
     font-weight: 700;
     font-size: 13px;
+  }
+  .nota.ok {
+    color: #2f8a5c;
+    font-weight: 700;
+  }
+  .precio {
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--yellow) 35%, var(--surface));
+  }
+  .linea {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .linea small {
+    color: var(--muted);
+  }
+  label.corto {
+    max-width: 220px;
+  }
+  input:disabled {
+    background: var(--surface-2);
   }
   .nota {
     margin: 0;

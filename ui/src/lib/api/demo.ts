@@ -3,7 +3,7 @@
 // es solo para ver y probar la interfaz.
 import { LIBROS_DEMO } from '../datos';
 import { buscarEn } from '../busqueda';
-import { calcular, montoDescuento, redondeoEfectivo } from '../ventas/calculo';
+import { calcular, montoDescuento, precioConMargen, redondeoEfectivo } from '../ventas/calculo';
 import type { Tienda } from '../tienda/modelo';
 import type { Api } from './contrato';
 import type {
@@ -123,6 +123,7 @@ interface Datos {
   encargos?: EncargoDemo[];
   encargoPagos?: { encargoId: number; metodo: Metodo; montoCent: number; fecha: string }[];
   plantillaWhatsapp?: string | null;
+  margen?: number;
 }
 
 type EncargoDemo = Omit<Encargo, 'cliente' | 'telefono' | 'adelantoCent' | 'precioCent' | 'stock' | 'portada' | 'colorTapa' | 'formato' | 'categoria'>;
@@ -847,6 +848,8 @@ export class ApiDemo implements Api {
     const cantidad = e.cantidad ?? 1;
     if (cantidad < 1 || cantidad > 999) throw new Error('La cantidad debe ser al menos 1');
     if (e.adelanto && e.adelanto.montoCent <= 0) throw new Error('El adelanto debe ser de más de S/ 0.00');
+    if ((e.costoCent ?? 0) < 0 || (e.precioAcordadoCent ?? 0) < 0) throw new Error('El costo y el precio no pueden ser negativos');
+    if (e.portadaUrl && !/^(https?:\/\/|data:image\/)/.test(e.portadaUrl)) throw new Error('Dirección de portada no válida');
     let titulo = e.titulo.trim();
     let autor = (e.autor ?? '').trim();
     if (e.libroId) {
@@ -880,6 +883,9 @@ export class ApiDemo implements Api {
       fechaAviso: null,
       fechaCierre: null,
       ventaId: null,
+      costoCent: e.costoCent ?? null,
+      precioAcordadoCent: e.precioAcordadoCent ?? (e.costoCent != null ? precioConMargen(e.costoCent, this.d.margen ?? 30) : null),
+      portadaUrl: e.libroId ? null : (e.portadaUrl ?? null),
     };
     es.push(nuevo);
     if (e.adelanto) (this.d.encargoPagos ??= []).push({ encargoId: nuevo.id, metodo: e.adelanto.metodo, montoCent: e.adelanto.montoCent, fecha: ahora });
@@ -977,7 +983,8 @@ export class ApiDemo implements Api {
     this.exigirSesion();
     const soles = (c: number) => `S/ ${(c / 100).toFixed(2)}`;
     let e = this.entregarEncargo(this.encargoId(id));
-    const total = e.precioCent != null ? e.precioCent * e.cantidad - e.adelantoCent : null;
+    const base = e.precioAcordadoCent ?? e.precioCent;
+    const total = base != null ? base * e.cantidad - e.adelantoCent : null;
     const saldo =
       total != null && total > 0 ? `Saldo a pagar: ${soles(total)}. ` : total != null && e.adelantoCent > 0 ? 'Ya está pagado por completo. ' : e.adelantoCent > 0 ? `Ya dejaste ${soles(e.adelantoCent)} de adelanto. ` : '';
     const texto = (await this.plantillaWhatsapp())
@@ -992,5 +999,16 @@ export class ApiDemo implements Api {
     if (e.estado === 'llego') e = await this.estadoEncargo(id, 'avisado');
     window.open(url, '_blank', 'noopener');
     return { encargo: e, url };
+  }
+
+  async margenEncargos(valor?: number) {
+    this.exigirSesion();
+    if (valor !== undefined) {
+      this.exigirDuena('cambiar el margen de ganancia');
+      if (valor < 0 || valor > 500) throw new Error('El margen debe estar entre 0 % y 500 %');
+      this.d.margen = valor;
+      this.persistir();
+    }
+    return this.d.margen ?? 30;
   }
 }

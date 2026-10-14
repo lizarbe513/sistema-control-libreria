@@ -37,6 +37,7 @@
   /** Portada para la tarjeta: la guardada, o una generada con el color de tapa (o neutra si no hay libro). */
   function portadaDe(e: Encargo): string {
     if (e.portada) return api.urlPortada(e.portada);
+    if (e.portadaUrl) return e.portadaUrl;
     const l: Libro = {
       id: e.libroId ?? -e.id,
       titulo: e.titulo,
@@ -137,7 +138,10 @@
     if (e) void mover(e, estado);
   }
 
-  const saldo = (e: Encargo) => (e.precioCent != null ? e.precioCent * e.cantidad - e.adelantoCent : null);
+  const saldo = (e: Encargo) => {
+    const base = e.precioAcordadoCent ?? e.precioCent;
+    return base != null ? base * e.cantidad - e.adelantoCent : null;
+  };
 </script>
 
 <div class="encargos" class:movil data-vacio>
@@ -202,7 +206,7 @@
                   {#if e.autor}<small>{e.autor}</small>{/if}
                   <span class="cli">👤 {e.cliente}{#if e.cantidad > 1} · {e.cantidad} ej.{/if}</span>
                   <small class="meta">
-                    {[hace(e.creado), e.adelantoCent ? `adelanto ${soles(e.adelantoCent)}` : '', s != null && s > 0 ? `saldo ${soles(s)}` : ''].filter(Boolean).join(' · ')}
+                    {[hace(e.creado), e.precioAcordadoCent ?? e.precioCent ? `precio ${soles((e.precioAcordadoCent ?? e.precioCent)!)}` : '', e.adelantoCent ? `adelanto ${soles(e.adelantoCent)}` : '', s != null && s > 0 ? `saldo ${soles(s)}` : ''].filter(Boolean).join(' · ')}
                   </small>
                   {#if !e.libroId}<small class="sin">Sin libro enlazado</small>{/if}
                   {#if e.notas}<small class="notas">📝 {e.notas}</small>{/if}

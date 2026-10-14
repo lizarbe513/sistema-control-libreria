@@ -5,9 +5,9 @@
   import { fly, fade } from 'svelte/transition';
   import { api, type Formato, type LibroApi, type ResultadoLinea, type Sugerencia, type UbicacionApi } from '../api';
   import { CATEGORIAS, soles, type Libro } from '../datos';
-  import { avisar } from '../estado.svelte';
+  import { app, avisar } from '../estado.svelte';
   import { revisarLlegada } from '../encargos.svelte';
-  import { aCentimos, aSoles, borrador, inventario, inventarioCambio, vista, type BorradorLibro } from '../inventario.svelte';
+  import { aCentimos, aSoles, borrador, buscarExistente, inventario, inventarioCambio, vista, type BorradorLibro } from '../inventario.svelte';
   import { esDuena } from '../sesion.svelte';
   import { compartimentos, infoTipo, resolver, textoPosicion, tipoDeEstante } from '../tienda/modelo';
   import { tienda } from '../tienda/tienda.svelte';
@@ -51,7 +51,53 @@
   let elegido = $state<ResultadoLinea | null>(rec?.elegido ?? null);
 
   /** Un resultado de la búsqueda en línea: llena el formulario y deja su portada pendiente. */
+  // ── ¿este libro ya existe en el inventario (quizá agotado)? Se ofrece sumarle stock en vez de duplicarlo ──
+  let existente = $state<Libro | null>(null);
+  let ignorarExistente = false;
+  let sumarN = $state('');
+
+  async function detectar(r: { isbn?: string | null; titulo: string; autor?: string }) {
+    if (!nuevo) return;
+    try {
+      const l = await buscarExistente(r);
+      if (l) {
+        existente = l;
+        sumarN = String(Math.max(1, Number(stock) || 1));
+      }
+    } catch {
+      /* la comprobación es una ayuda */
+    }
+  }
+
+  async function sumarAlExistente() {
+    if (!existente) return;
+    const n = Number(sumarN);
+    if (!Number.isInteger(n) || n < 1) return void avisar('Escribe cuántos ejemplares llegaron (1 o más)');
+    try {
+      const l = await api.ajustarStock(existente.id, n, 'ingreso', 'Llegaron otra vez (desde «Nuevo libro»)');
+      guardadoOk = true;
+      borrador.datos = null;
+      inventarioCambio();
+      avisar(`Stock de «${l.titulo}»: ${l.stock} (sumaste ${n}) 📚`);
+      onGuardado?.(vista(l));
+      onCerrar();
+      void revisarLlegada({ id: l.id, titulo: l.titulo, stock: l.stock }, false);
+    } catch (x) {
+      avisar((x as Error).message);
+    }
+  }
+
+  function editarExistente() {
+    const id = existente?.id ?? null;
+    existente = null;
+    ignorarExistente = true;
+    app.editar = id; // el cajón pasa a editar ese libro (el borrador queda guardado por si se vuelve)
+  }
+
   function elegirResultado(r: ResultadoLinea) {
+    existente = null;
+    ignorarExistente = false;
+    void detectar(r);
     elegido = r;
     titulo = r.titulo;
     autor = r.autor;
@@ -167,6 +213,14 @@
     if (precioCent === null) return void (error = 'Escribe el precio con números (por ejemplo 35.50)');
     if (duena && costoCent === null) return void (error = 'Escribe el costo con números (por ejemplo 20.00)');
     const nStock = enteroODefecto(stock, 0);
+    // antes de duplicar: si ya existe (p. ej. agotado), se ofrece sumarle el stock
+    if (nuevo && !ignorarExistente && !existente) {
+      await detectar({ isbn: isbn.trim() || null, titulo, autor });
+      if (existente) {
+        sumarN = String(Math.max(1, nStock || 1));
+        return;
+      }
+    } else if (existente) return;
     const nMinimo = enteroODefecto(stockMinimo, 1);
     const nAnio = anio.trim() ? Number(anio) : null;
     if (Number.isNaN(nStock) || Number.isNaN(nMinimo)) return void (error = 'El stock debe ser un número entero');
@@ -263,6 +317,25 @@
       <div class="borrador">
         <span>📝 Recuperé lo que estabas escribiendo{titulo ? `: «${titulo}»` : ''}.</span>
         <button type="button" class="mini" onclick={empezarDeCero}>Empezar de cero</button>
+      </div>
+    {/if}
+
+    {#if nuevo && existente}
+      <div class="existe" role="alert" data-testid="ya-existe">
+        <strong>📚 Ya tienes «{existente.titulo}» en el inventario</strong>
+        <span>{existente.stock === 0 ? 'Está agotado' : `Quedan ${existente.stock}`} · precio {soles(existente.precio)}{existente.ubicacion ? ' · con su ubicación guardada' : ''}.</span>
+        <div class="fila-existe">
+          <label>
+            Llegaron
+            <input class="corto" bind:value={sumarN} inputmode="numeric" aria-label="Ejemplares que llegaron" />
+            ejemplares
+          </label>
+          <button type="button" class="btn btn-primario" onclick={sumarAlExistente}>➕ Sumar al stock de ese libro</button>
+        </div>
+        <span class="pie-existe">
+          {#if existente.isbn && existente.isbn === isbn.trim().replace(/[\s-]/g, '')}Un ISBN no se puede repetir.{:else}<button type="button" class="mini" onclick={() => ((existente = null), (ignorarExistente = true))}>Es otra edición: crear como libro nuevo</button>{/if}
+          <button type="button" class="mini" onclick={editarExistente}>Editar ese libro</button>
+        </span>
       </div>
     {/if}
 
@@ -569,6 +642,36 @@
     background: var(--surface);
     color: var(--primary-strong);
     box-shadow: var(--sombra-suave);
+  }
+  .existe {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: color-mix(in srgb, #5dbb8a 22%, var(--surface));
+    font-size: 14px;
+  }
+  .fila-existe {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .fila-existe label {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    font-weight: 700;
+  }
+  .fila-existe .corto {
+    width: 64px;
+  }
+  .pie-existe {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 12.5px;
   }
   .borrador {
     display: flex;

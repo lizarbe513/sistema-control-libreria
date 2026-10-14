@@ -3,6 +3,7 @@
   import { app, avisar, guardar, type AnimLibro } from '../estado.svelte';
   import { api } from '../api';
   import { cerrarSesion, esDuena, sesion } from '../sesion.svelte';
+  import MargenEncargos from '../componentes/MargenEncargos.svelte';
   import MensajeWhatsapp from '../componentes/MensajeWhatsapp.svelte';
   import MetodosPago from '../componentes/MetodosPago.svelte';
   import TiposCliente from '../componentes/TiposCliente.svelte';
@@ -106,6 +107,11 @@
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Mensaje de WhatsApp para encargos</h2>
       <MensajeWhatsapp />
+    </section>
+
+    <section class="vidrio bloque">
+      <h2 class="titulo-seccion">Margen de ganancia en encargos</h2>
+      <MargenEncargos />
     </section>
   {/if}
 

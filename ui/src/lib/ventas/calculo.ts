@@ -52,3 +52,9 @@ export function redondeoEfectivo(totalPrevio: number, adelanto: number, pagos: {
 export function efectivoSugerido(faltaCent: number): number {
   return faltaCent >= 10 ? faltaCent - (faltaCent % 10) : faltaCent;
 }
+
+/** Precio de venta = costo + margen %, subido al siguiente múltiplo de 10 céntimos (igual que `precio_con_margen` en Rust). */
+export function precioConMargen(costoCent: number, margenPct: number): number {
+  const arriba = (n: number, d: number) => Math.ceil(n / d);
+  return arriba(arriba(costoCent * (100 + margenPct), 100), 10) * 10;
+}

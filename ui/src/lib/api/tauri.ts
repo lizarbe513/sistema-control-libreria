@@ -225,4 +225,7 @@ export class ApiTauri implements Api {
     const [encargo, url] = await this.llamar<[Encargo, string]>('encargo_avisar_whatsapp', { id });
     return { encargo, url };
   }
+  margenEncargos(valor?: number) {
+    return this.llamar<number>('margen_encargos', { pct: valor ?? null });
+  }
 }

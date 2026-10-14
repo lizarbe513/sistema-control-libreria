@@ -58,3 +58,23 @@ export interface BorradorLibro {
 
 /** Vive solo en memoria: se pierde al cerrar la app o la sesión (no se escribe a disco). */
 export const borrador = $state<{ datos: BorradorLibro | null }>({ datos: null });
+
+const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+/** ¿Este libro (de la búsqueda en internet o escrito) ya está en el inventario? Primero por ISBN, luego por título y autor. */
+export async function buscarExistente(r: { isbn?: string | null; titulo: string; autor?: string }): Promise<Libro | null> {
+  if (r.isbn) {
+    const l = (await api.buscarLibros(r.isbn, { limite: 5 })).find((x) => x.isbn === r.isbn);
+    if (l) return vista(l);
+  }
+  const t = norm(r.titulo);
+  if (t.length < 3) return null;
+  const apellido = (a: string) => norm(a).split(' ').filter(Boolean).pop() ?? '';
+  const l = (await api.buscarLibros(r.titulo, { limite: 10 })).find((x) => {
+    if (norm(x.titulo) !== t) return false;
+    const a = apellido(r.autor ?? '');
+    const b = apellido(x.autor);
+    return !a || !b || a === b || norm(x.autor).includes(a) || norm(r.autor ?? '').includes(b);
+  });
+  return l ? vista(l) : null;
+}

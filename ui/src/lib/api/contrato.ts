@@ -110,4 +110,6 @@ export interface Api {
   plantillaWhatsapp(texto?: string): Promise<string>;
   /** Abre WhatsApp con el aviso redactado; si estaba «llegó», pasa a «avisado». */
   avisarWhatsapp(id: number): Promise<{ encargo: Encargo; url: string }>;
+  /** Margen de ganancia (%) sobre el costo de un libro encargado. Con `valor` lo cambia (solo la Dueña). */
+  margenEncargos(valor?: number): Promise<number>;
 }

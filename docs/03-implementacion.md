@@ -141,6 +141,11 @@ debe ser exactamente el total. Solo el efectivo da vuelto: se guarda lo recibido
 stock. Si falta stock o los pagos no cuadran, no queda nada a medias. El título y el % del tipo de cliente se copian
 en la venta, para que el historial no cambie si luego se editan.
 
+**Libro que ya existía:** al agregar un libro nuevo (elegido en internet, o escrito) que ya está en el inventario —
+típicamente agotado—, en vez de rechazarlo por duplicado se ofrece **sumar los ejemplares que llegaron** a ese libro
+(movimiento de ingreso, y la carta de «¡llegó!» si había encargos). También se puede editar ese libro o, si es otra
+edición, crearlo igual (un ISBN repetido nunca se crea).
+
 **Nombre del cliente:** campo opcional en la venta. Vacío, queda «Cliente»; si se enlaza un cliente registrado, su
 nombre se rellena solo. Se guarda en la venta (`cliente_nombre`), así que el historial no cambia si la ficha se edita.
 
@@ -175,6 +180,12 @@ devolvió: la devolución es una fila negativa con la fecha de hoy. Anular la ve
 **¿Lo encargamos?:** en Buscar (sin resultados) precarga el título buscado; en la ficha de un libro agotado, el libro.
 El encargo puede ser de un libro del inventario o escrito a mano; luego se enlaza con un libro.
 
+**Búsqueda en internet y precio del encargo:** el formulario tiene una pestaña «🔎 Buscar en internet» (la misma de
+«Nuevo libro»): se elige el libro exacto con su portada. Si ya estuvo en el inventario (por ISBN o por título y autor),
+se usa ese libro y su precio. Si no, se puede anotar el **costo del proveedor** (opcional): el precio sugerido es costo +
+**margen de ganancia** (30 % de partida; la Dueña lo cambia en Ajustes), subido a los 10 céntimos, y se puede corregir. El
+precio acordado se guarda en el encargo y se usa para el saldo y el mensaje de WhatsApp.
+
 **Carta con sello de cera:** al ingresar stock de un libro que alguien esperaba (pendiente/pedido) aparece la carta con
 «Marcar como llegó» y «Avisar por WhatsApp». Al dar de alta un libro nuevo, la carta pregunta si es el que encargaron
 cuando un encargo sin libro tiene un título parecido (normalizado, contención o Jaro-Winkler ≥ 0,92).
@@ -205,7 +216,7 @@ no sobra stock, se avisa (no se impide).
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 
 ## Cómo se probó (hitos 1 a 4)
-- **`cargo test -p libreria-core`:** 50 tests, más 2 con red. Cubren:
+- **`cargo test -p libreria-core`:** 51 tests, más 2 con red. Cubren:
   - el cifrado real y la llave equivocada;
   - PIN y bloqueo tras 5 intentos;
   - ventas: el orden de los descuentos, el redondeo solo en efectivo, el pago dividido con vuelto, que un pago
