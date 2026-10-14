@@ -83,6 +83,12 @@ errores de tipeo, y el índice en memoria ya cumple el objetivo con margen.
 - **Las bajas no borran:** el libro deja de aparecer, su historial se conserva y su ISBN se libera.
 - **Ubicación:** estante + tramo + repisa, una referencia blanda a «Mi tienda». Si el compartimento deja de
   existir, la ficha muestra «Por revisar».
+- **Búsqueda en internet por título o autor** (para libros sin ISBN):
+  - Open Library es la base: devuelve portada, ISBN, editorial y año;
+  - Google Books solo ayuda si responde, porque su cuota gratuita anónima se agota (se ignora en silencio; se puede
+    guardar una clave propia en `config`, `clave_google_books`);
+  - los resultados se ordenan (con portada y en español primero) y se quitan los repetidos;
+  - al elegir uno se llena el formulario y su portada queda pendiente; la usuaria la puede cambiar por una imagen propia.
 - **Datos por ISBN:**
   - se piden a Open Library, y Google Books completa lo que falte;
   - el *timeout* es de 6 s y, sin internet, aparece un aviso amable;
@@ -91,6 +97,10 @@ errores de tipeo, y el índice en memoria ya cumple el objetivo con margen.
   Sin portada se usa la generada del prototipo.
 
 ### Tienda en bloques
+- **Divisiones verticales (tramos):** cada estante tiene «− N +» tramos (1 = repisas corridas, sin divisiones), en
+  «Organizar» y en la tarjeta del estante. Con un solo tramo, la ubicación de un libro es «Tramo 1».
+- **Repisas:** la tabla de madera se ve gruesa y sobresale al frente, y los libros se apoyan en ella.
+
 El editor trabaja con el objeto `Tienda` completo (con deshacer). `tienda_guardar` reemplaza las filas de
 `tienda`, `bloques` y `estantes` en una transacción, con *debounce* desde la interfaz.
 - **Primer arranque:** se guarda la plantilla por defecto («SIGLO XXI (croquis)»).
@@ -135,3 +145,34 @@ instalador.
   4. agregar un libro con datos reales de Open Library y su portada descargada;
   5. buscarlo con un error de tipeo y ver su ficha;
   6. reabrir y que siga ahí.
+
+## Preparar Android (hito 7)
+
+Para compilar el APK hacen falta el SDK de Android y un teléfono (o el emulador). En este equipo ya están el
+JDK 17, `yay`, `/dev/kvm` y espacio en disco; faltan estas piezas, que se instalan con `sudo`:
+
+```bash
+# 1. SDK (herramientas de línea de comandos, plataforma-tools y NDK) desde AUR
+yay -S android-sdk-cmdline-tools-latest android-sdk-platform-tools android-ndk
+sudo gpasswd -a $USER sdkusers        # permite usar /opt/android-sdk sin sudo (cerrar sesión y volver a entrar)
+
+# 2. Licencias y plataformas
+export ANDROID_HOME=/opt/android-sdk
+yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
+```
+
+Variables que usa Tauri (se agregan a `~/.bashrc` o `~/.zshrc`):
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk   # Gradle no soporta bien el JDK 26
+export ANDROID_HOME=/opt/android-sdk
+export NDK_HOME=/opt/android-ndk
+```
+
+Teléfono: Android 8 o superior, con *Opciones de desarrollador → Depuración por USB*, conectado por cable y
+aceptando la huella de la PC en su pantalla (`adb devices` debe listarlo). Sin teléfono se puede usar el emulador
+(`/dev/kvm` está disponible; la imagen del sistema pesa unos 3 GB).
+
+Lo demás lo hace el desarrollo: `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`,
+`cargo tauri android init` y la compilación del APK.
