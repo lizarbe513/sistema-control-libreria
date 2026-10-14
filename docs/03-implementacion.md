@@ -78,8 +78,7 @@ errores de tipeo, y el índice en memoria ya cumple el objetivo con margen.
 ### Libros
 - **Código:** el ISBN normalizado a ISBN-13 (acepta ISBN-10 y valida el dígito de control). Sin ISBN, se usa un
   código interno `SXXI-000123`.
-- **El stock solo cambia con movimientos registrados:** alta, ingreso o ajuste. Las ventas y anulaciones llegarán
-  en el hito 3. Nunca queda negativo.
+- **El stock solo cambia con movimientos registrados:** alta, ingreso, ajuste, venta o anulación. Nunca queda negativo.
 - **Las bajas no borran:** el libro deja de aparecer, su historial se conserva y su ISBN se libera.
 - **Borrador del libro nuevo:** si se sale del cajón sin guardar (Esc, clic afuera, Cancelar o cambiando de vista),
   lo escrito se conserva en memoria y se recupera al volver («Empezar de cero» lo descarta). No se escribe a disco y
@@ -115,24 +114,59 @@ El editor trabaja con el objeto `Tienda` completo (con deshacer). `tienda_guarda
 `reqwest` con TLS nativo del sistema: en Windows usa SChannel, así que no necesita OpenSSL ni cmake para el
 instalador.
 
+## Ventas (hito 3)
+
+**Cálculo** (`crates/core/src/ventas.rs`; la interfaz lo imita en `ui/src/lib/ventas/calculo.ts` solo para mostrar los
+totales mientras se arma la venta, pero al registrar el núcleo **recalcula todo** con los precios de la base):
+1. subtotal de cada línea = precio × cantidad;
+2. descuento del libro (% o monto);
+3. descuento del tipo de cliente (Público 0 %, Profesor 15 %, Mayorista 25 %; la Dueña los edita en Ajustes);
+4. descuento al total (% o monto);
+5. **redondeo en efectivo:** lo que se paga en efectivo se baja a múltiplo de 10 céntimos (en Perú no circulan
+   monedas de 1 y 5 céntimos). Tarjeta, Yape/Plin y transferencia cobran exacto. El redondeo se guarda en la venta.
+
+Los porcentajes se redondean al céntimo a favor del cliente. Todo en céntimos enteros.
+
+**Pagos:** uno o varios por venta (efectivo, tarjeta, Yape/Plin, transferencia). Cada pago aporta un monto y la suma
+debe ser exactamente el total. Solo el efectivo da vuelto: se guarda lo recibido y el vuelto de cada pago.
+
+**Permisos:**
+- cualquiera que haya entrado vende;
+- los descuentos a mano (por libro o al total) de una vendedora tienen un **tope** (10 % de partida; la Dueña lo
+  cambia en Ajustes). El descuento del tipo de cliente no cuenta contra el tope. La Dueña no tiene tope;
+- **anular una venta solo la Dueña:** exige un motivo, devuelve el stock con un movimiento `anulacion` y no borra
+  nada (la venta queda tachada en el historial).
+
+**Integridad:** registrar una venta es **una sola transacción**: la venta, sus ítems, sus pagos y el descuento de
+stock. Si falta stock o los pagos no cuadran, no queda nada a medias. El título y el % del tipo de cliente se copian
+en la venta, para que el historial no cambie si luego se editan.
+
+**Interfaz:** vista «Vender» (buscar y agregar con Enter o con ＋, tipo de cliente, cliente opcional con alta rápida,
+cobrar), «Ventas del día» con selector de fecha y anulación, «Hoy» en Inicio y el botón «Vender» de la ficha.
+Al confirmar cae una lluvia breve de corazones y pétalos (si las animaciones están activas).
+El día de «hoy» es el **día local**: la interfaz convierte el día a instantes UTC y el núcleo no sabe de zonas horarias.
+
 ## Estado de los hitos
 
 | Hito | Contenido | Estado |
 |---|---|---|
 | 1. Cimientos | Workspace, base cifrada, carpeta portable, llavero, primer arranque, desbloquear, entrar con PIN, usuarias, preferencias | ✅ |
 | 2. Inventario y búsqueda | Libros, stock, categorías, etiquetas, ISBN por internet, portadas, búsqueda tolerante, tienda en bloques y plantillas en la base, vista «Libros», ubicación elegida en la tienda 3D | ✅ |
-| 3. Ventas | Carrito, tipos de cliente con %, métodos de pago, vuelto, anulación (Dueña) | Pendiente |
+| 3. Ventas | Carrito, tipos de cliente con %, descuentos, pago dividido, vuelto, redondeo en efectivo, anulación (Dueña), ventas del día | ✅ |
 | 4. Encargos y clientes | Fichas, estados, aviso por WhatsApp, aviso al ingresar stock | Pendiente |
 | 5. Reportes | Por período, más vendidos, cuadre de caja, exportar CSV | Pendiente |
-| 6. Respaldos y configuración | Respaldo automático y manual, restaurar, tipos de cliente | Pendiente |
+| 6. Respaldos y configuración | Respaldo automático y manual, restaurar | Pendiente |
 | 7. Celular | Servidor LAN (axum), vinculación por QR, escaneo de ISBN, app Android | Pendiente (falta el SDK de Android en el equipo de desarrollo) |
 | 8. Asistente IA | Gemini + Groq, *function calling* sobre el inventario | Pendiente |
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 
-## Cómo se probó (hitos 1 y 2)
-- **`cargo test -p libreria-core`:** 28 tests, más 1 con red. Cubren:
+## Cómo se probó (hitos 1 a 3)
+- **`cargo test -p libreria-core`:** 40 tests, más 2 con red. Cubren:
   - el cifrado real y la llave equivocada;
   - PIN y bloqueo tras 5 intentos;
+  - ventas: el orden de los descuentos, el redondeo solo en efectivo, el pago dividido con vuelto, que un pago
+    incorrecto o la falta de stock no dejen nada a medias, el tope de las vendedoras, la anulación (solo la Dueña,
+    una sola vez, también con el libro dado de baja) y los resúmenes;
   - CRUD de libros y costos ocultos al vendedor;
   - stock sin negativos y validación de ISBN;
   - lectura de Open Library y Google Books (con JSON guardado) y portadas;
