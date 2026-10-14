@@ -10,6 +10,9 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  ConsultaReporte,
+  Reporte,
+  TipoCsv,
   Encargo,
   EncargoEntrada,
   EstadoEncargo,
@@ -1010,5 +1013,116 @@ export class ApiDemo implements Api {
       this.persistir();
     }
     return this.d.margen ?? 30;
+  }
+
+  // ── reportes (el cálculo real vive en Rust; esto es una versión sencilla para ver la interfaz) ──
+  private ventasDe(c: ConsultaReporte) {
+    return (this.d.ventas ?? []).filter((v) => v.fecha >= c.desde && v.fecha < c.hasta);
+  }
+
+  async reporte(c: ConsultaReporte): Promise<Reporte> {
+    const yo = this.exigirSesion();
+    if (yo.rol !== 'duena') throw new Error('No tienes permiso para ver los reportes');
+    if (c.desde >= c.hasta) throw new Error('El período no es válido: «desde» debe ser antes que «hasta»');
+    const todas = this.ventasDe(c);
+    const ok = todas.filter((v) => !v.anulada);
+    const local = (iso: string) => new Date(new Date(iso).getTime() + c.tzMin * 60000).toISOString();
+    const clave = (iso: string) => local(iso).slice(0, c.agrupar === 'dia' ? 10 : 7);
+    const costoDe = (libroId: number) => (this.d.libros ?? []).find((l) => l.id === libroId)?.costoCent ?? 0;
+    const costoVenta = (v: Venta) => v.items.reduce((s, i) => s + costoDe(i.libroId) * i.cantidad, 0);
+    // serie con los períodos vacíos en cero
+    const claves: string[] = [];
+    for (let t = new Date(c.desde).getTime(); t < new Date(c.hasta).getTime() + 86_400_000; t += 86_400_000) {
+      const k = clave(new Date(t).toISOString());
+      if (!claves.includes(k) && local(new Date(t).toISOString()) < local(c.hasta) ) claves.push(k);
+    }
+    const serie = claves.sort().map((k) => {
+      const vs = ok.filter((v) => clave(v.fecha) === k);
+      const total = vs.reduce((s, v) => s + v.totalCent, 0);
+      return { etiqueta: k, ventas: vs.length, unidades: vs.reduce((s, v) => s + v.items.reduce((n, i) => n + i.cantidad, 0), 0), totalCent: total, gananciaCent: total - vs.reduce((s, v) => s + costoVenta(v), 0) };
+    });
+    const total = ok.reduce((s, v) => s + v.totalCent, 0);
+    const resumen = await this.resumenVentas(c.desde, c.hasta);
+    const porLibro = new Map<number, { titulo: string; unidades: number; totalCent: number; costo: number }>();
+    for (const v of ok) for (const i of v.items) {
+      const x = porLibro.get(i.libroId) ?? { titulo: i.titulo, unidades: 0, totalCent: 0, costo: 0 };
+      x.unidades += i.cantidad;
+      x.totalCent += i.totalCent;
+      x.costo += costoDe(i.libroId) * i.cantidad;
+      porLibro.set(i.libroId, x);
+    }
+    const masVendidos = [...porLibro].map(([libroId, x]) => ({ libroId, titulo: x.titulo, unidades: x.unidades, totalCent: x.totalCent, gananciaCent: x.totalCent - x.costo })).sort((a, b) => b.unidades - a.unidades || b.totalCent - a.totalCent).slice(0, 10);
+    const porCat = new Map<string, { unidades: number; totalCent: number }>();
+    for (const v of ok) for (const i of v.items) {
+      const k = (this.d.libros ?? []).find((l) => l.id === i.libroId)?.categoria ?? 'otros';
+      const x = porCat.get(k) ?? { unidades: 0, totalCent: 0 };
+      x.unidades += i.cantidad;
+      x.totalCent += i.totalCent;
+      porCat.set(k, x);
+    }
+    const categorias = [...porCat].map(([k, x]) => ({ clave: k, nombre: CATEGORIAS_DEMO.find((q) => q.clave === k)?.nombre ?? k, color: CATEGORIAS_DEMO.find((q) => q.clave === k)?.color ?? '#eee', ...x })).sort((a, b) => b.totalCent - a.totalCent);
+    const agrupar = (f: (v: Venta) => string) => {
+      const m = new Map<string, { ventas: number; totalCent: number }>();
+      for (const v of ok) {
+        const x = m.get(f(v)) ?? { ventas: 0, totalCent: 0 };
+        x.ventas++;
+        x.totalCent += v.totalCent;
+        m.set(f(v), x);
+      }
+      return [...m].map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.totalCent - a.totalCent);
+    };
+    const corte = new Date(new Date(c.ahora).getTime() - c.diasSinMov * 86_400_000).toISOString();
+    const ultimaVenta = (id: number) => (this.d.ventas ?? []).filter((v) => !v.anulada && v.items.some((i) => i.libroId === id)).map((v) => v.fecha).sort().at(-1) ?? '';
+    const sin = this.libros
+      .filter((l) => l.stock > 0)
+      .map((l) => ({ l, ref: [ultimaVenta(l.id), l.actualizado].sort().at(-1)! }))
+      .filter((x) => x.ref < corte)
+      .sort((a, b) => (a.ref < b.ref ? -1 : 1));
+    return {
+      totales: {
+        ventas: ok.length,
+        anuladas: todas.length - ok.length,
+        unidades: ok.reduce((s, v) => s + v.items.reduce((n, i) => n + i.cantidad, 0), 0),
+        totalCent: total,
+        gananciaCent: total - ok.reduce((s, v) => s + costoVenta(v), 0),
+        descuentosCent: ok.reduce((s, v) => s + v.descuentoCent, 0),
+        redondeoCent: ok.reduce((s, v) => s + v.redondeoCent, 0),
+        ticketPromedioCent: ok.length ? Math.floor(total / ok.length) : 0,
+        adelantosCent: resumen.adelantosCent,
+      },
+      serie,
+      caja: resumen.porMetodo,
+      masVendidos,
+      categorias,
+      porTipo: agrupar((v) => v.tipoNombre),
+      porVendedora: agrupar((v) => v.vendedora),
+      sinMovimiento: sin.slice(0, 50).map(({ l, ref }) => ({ libroId: l.id, titulo: l.titulo, autor: l.autor, categoria: CATEGORIAS_DEMO.find((q) => q.clave === l.categoria)?.nombre ?? l.categoria, stock: l.stock, costoCent: l.costoCent ?? 0, precioCent: l.precioCent, dias: Math.floor((new Date(c.ahora).getTime() - new Date(ref).getTime()) / 86_400_000) })),
+      sinMovimientoTotal: sin.length,
+      inmovilizadoCent: sin.reduce((s, x) => s + x.l.stock * (x.l.costoCent ?? 0), 0),
+    };
+  }
+
+  async exportarReporte(tipo: TipoCsv, c: ConsultaReporte, nombreSugerido: string) {
+    const r = await this.reporte(c);
+    const campo = (t: string) => {
+      const v = /^[=+\-@]/.test(t) ? `'${t}` : t;
+      return /[",\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v;
+    };
+    const s = (n: number) => (n / 100).toFixed(2);
+    const filas: string[][] =
+      tipo === 'ventas'
+        ? [['Venta', 'Fecha', 'Estado', 'Vendedora', 'Cliente', 'Libro', 'Cantidad', 'Total del ítem', 'Total de la venta'], ...this.ventasDe(c).flatMap((v) => v.items.map((i) => [String(v.id), v.fecha, v.anulada ? 'Anulada' : 'Vigente', v.vendedora, v.cliente, i.titulo, String(i.cantidad), s(i.totalCent), s(v.totalCent)]))]
+        : tipo === 'mas_vendidos'
+          ? [['Posición', 'Libro', 'Unidades', 'Vendido', 'Ganancia estimada'], ...r.masVendidos.map((l, k) => [String(k + 1), l.titulo, String(l.unidades), s(l.totalCent), s(l.gananciaCent)])]
+          : tipo === 'sin_movimiento'
+            ? [['Libro', 'Autor', 'Categoría', 'Stock', 'Costo unitario', 'Precio', 'Días sin movimiento'], ...r.sinMovimiento.map((l) => [l.titulo, l.autor, l.categoria, String(l.stock), s(l.costoCent), s(l.precioCent), String(l.dias)])]
+            : [['Método de pago', 'Monto cobrado'], ...r.caja.map((p) => [p.metodo, s(p.montoCent)])];
+    const csv = '\uFEFF' + filas.map((f) => f.map(campo).join(',')).join('\r\n') + '\r\n';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = nombreSugerido;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    return nombreSugerido;
   }
 }

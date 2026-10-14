@@ -201,6 +201,26 @@ historial de compras (sin anuladas) y de encargos. La búsqueda encuentra el tel
 **Libro apartado:** al agregar en Vender un libro que está apartado para el encargo de otro cliente (llegó/avisado) y
 no sobra stock, se avisa (no se impide).
 
+## Reportes (hito 5)
+
+Solo la Dueña (el núcleo lo exige, no solo la interfaz). Todo se calcula en `crates/core/src/reportes.rs`.
+
+- **Período:** Hoy, Ayer, Esta semana (lunes a domingo), Este mes, Últimos 30 días, Este año o fechas a elección. La
+  interfaz elige los días **locales** y los manda como instantes UTC `[desde, hasta)` más el desfase local (`tzMin`,
+  Perú −300): el núcleo no conoce zonas horarias, solo agrupa con ese desfase. Hasta 92 días se agrupa por día; más, por mes.
+  Los días sin ventas aparecen en cero.
+- **Resumen:** vendido, nº de ventas y libros, ticket promedio, descuentos (con el redondeo), anuladas (no cuentan) y
+  **ganancia estimada** = lo vendido − el costo de esos libros. El costo se **congela en cada venta**
+  (`venta_items.costo_unit_cent`): si el costo del libro sube después, el historial no cambia.
+- **Caja:** lo cobrado por método = pagos de las ventas + adelantos (y devoluciones) de encargos del período.
+- **Más vendidos** (top 10 por unidades), **por categoría**, **por tipo de cliente** y **por vendedora**.
+- **Libros sin movimiento:** con stock y sin ventas ni ingresos de stock desde hace 30/60/90/180/365 días (se mira lo
+  más reciente entre la última venta, el último ingreso y el alta). Muestra los 50 más antiguos, cuántos son en total y
+  **cuánta plata detenida** hay (stock × costo): candidatos a oferta o liquidación.
+- **Exportar a Excel (CSV):** ventas (una fila por libro), más vendidos, caja y sin movimiento. El archivo se escribe en
+  Rust a la ruta que se elige en el diálogo de guardar (permiso `dialog:allow-save`), en UTF-8 con BOM para que Excel lea
+  bien las tildes. Los textos que empiezan con `= + - @` se neutralizan (inyección de fórmulas) y las comas y comillas se escapan.
+
 ## Estado de los hitos
 
 | Hito | Contenido | Estado |
@@ -209,14 +229,14 @@ no sobra stock, se avisa (no se impide).
 | 2. Inventario y búsqueda | Libros, stock, categorías, etiquetas, ISBN por internet, portadas, búsqueda tolerante, tienda en bloques y plantillas en la base, vista «Libros», ubicación elegida en la tienda 3D | ✅ |
 | 3. Ventas | Carrito, tipos de cliente con %, descuentos, pago dividido, vuelto, redondeo en efectivo, anulación (Dueña), ventas del día | ✅ |
 | 4. Encargos y clientes | Fichas con historial, tablero por estados, adelanto, aviso por WhatsApp, carta al ingresar stock, entrega desde Vender | ✅ |
-| 5. Reportes | Por período, más vendidos, cuadre de caja, exportar CSV | Pendiente |
+| 5. Reportes | Por período, más vendidos, categorías, ganancia, cuadre de caja, libros sin movimiento, exportar CSV | ✅ |
 | 6. Respaldos y configuración | Respaldo automático y manual, restaurar | Pendiente |
 | 7. Celular | Servidor LAN (axum), vinculación por QR, escaneo de ISBN, app Android | Pendiente (falta el SDK de Android en el equipo de desarrollo) |
 | 8. Asistente IA | Gemini + Groq, *function calling* sobre el inventario | Pendiente |
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 
-## Cómo se probó (hitos 1 a 4)
-- **`cargo test -p libreria-core`:** 51 tests, más 2 con red. Cubren:
+## Cómo se probó (hitos 1 a 5)
+- **`cargo test -p libreria-core`:** 54 tests, más 2 con red. Cubren:
   - el cifrado real y la llave equivocada;
   - PIN y bloqueo tras 5 intentos;
   - ventas: el orden de los descuentos, el redondeo solo en efectivo, el pago dividido con vuelto, que un pago

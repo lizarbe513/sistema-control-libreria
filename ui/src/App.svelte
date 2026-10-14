@@ -17,6 +17,7 @@
   import CartaLlego from './lib/componentes/CartaLlego.svelte';
   import { encargosUI } from './lib/encargos.svelte';
   import Encargos from './lib/vistas/Encargos.svelte';
+  import Reportes from './lib/vistas/Reportes.svelte';
   import Pendiente from './lib/vistas/Pendiente.svelte';
   import Vender from './lib/vistas/Vender.svelte';
   import Bienvenida from './lib/acceso/Bienvenida.svelte';
@@ -93,6 +94,8 @@
             <Vender />
           {:else if app.vista === 'encargos'}
             <Encargos />
+          {:else if app.vista === 'reportes'}
+            <Reportes />
           {:else if app.vista === 'ajustes'}
             <Ajustes />
           {:else if app.vista === 'tienda'}

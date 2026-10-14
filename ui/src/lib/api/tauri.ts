@@ -1,11 +1,14 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
-import { open } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import type { Api } from './contrato';
 import type { Tienda } from '../tienda/modelo';
 import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  ConsultaReporte,
+  Reporte,
+  TipoCsv,
   Encargo,
   EncargoEntrada,
   EstadoEncargo,
@@ -227,5 +230,13 @@ export class ApiTauri implements Api {
   }
   margenEncargos(valor?: number) {
     return this.llamar<number>('margen_encargos', { pct: valor ?? null });
+  }
+  reporte(consulta: ConsultaReporte) {
+    return this.llamar<Reporte>('reporte', { consulta });
+  }
+  async exportarReporte(tipo: TipoCsv, consulta: ConsultaReporte, nombreSugerido: string) {
+    const ruta = await save({ title: 'Guardar el reporte', defaultPath: nombreSugerido, filters: [{ name: 'Excel / CSV', extensions: ['csv'] }] });
+    if (!ruta) return null;
+    return this.llamar<string>('reporte_exportar', { tipo, consulta, ruta });
   }
 }

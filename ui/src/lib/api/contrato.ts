@@ -3,6 +3,9 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  ConsultaReporte,
+  Reporte,
+  TipoCsv,
   Encargo,
   EncargoEntrada,
   EstadoEncargo,
@@ -112,4 +115,9 @@ export interface Api {
   avisarWhatsapp(id: number): Promise<{ encargo: Encargo; url: string }>;
   /** Margen de ganancia (%) sobre el costo de un libro encargado. Con `valor` lo cambia (solo la Dueña). */
   margenEncargos(valor?: number): Promise<number>;
+
+  // ── reportes (solo la Dueña) ──
+  reporte(c: ConsultaReporte): Promise<Reporte>;
+  /** Pide dónde guardar y escribe el CSV. Devuelve la ruta (o null si se cancela). */
+  exportarReporte(tipo: TipoCsv, c: ConsultaReporte, nombreSugerido: string): Promise<string | null>;
 }

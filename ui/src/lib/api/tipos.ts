@@ -308,3 +308,48 @@ export interface EncargoEntrada {
   precioAcordadoCent?: number | null;
   portadaUrl?: string | null;
 }
+
+// ── reportes (solo la Dueña) ──
+export type Agrupar = 'dia' | 'mes';
+export type TipoCsv = 'ventas' | 'mas_vendidos' | 'sin_movimiento' | 'caja';
+export interface ConsultaReporte {
+  /** Instantes UTC (ISO): el período es [desde, hasta). */
+  desde: string;
+  hasta: string;
+  /** Minutos que se suman a UTC para obtener la hora local (Perú: −300). */
+  tzMin: number;
+  agrupar: Agrupar;
+  diasSinMov: number;
+  ahora: string;
+}
+export interface PuntoReporte {
+  /** `2026-10-14` (día) o `2026-10` (mes), hora local. */
+  etiqueta: string;
+  ventas: number;
+  unidades: number;
+  totalCent: number;
+  gananciaCent: number;
+}
+export interface TotalesReporte {
+  ventas: number;
+  anuladas: number;
+  unidades: number;
+  totalCent: number;
+  gananciaCent: number;
+  descuentosCent: number;
+  redondeoCent: number;
+  ticketPromedioCent: number;
+  adelantosCent: number;
+}
+export interface Reporte {
+  totales: TotalesReporte;
+  serie: PuntoReporte[];
+  caja: { metodo: Metodo; montoCent: number }[];
+  masVendidos: { libroId: number; titulo: string; unidades: number; totalCent: number; gananciaCent: number }[];
+  categorias: { clave: string; nombre: string; color: string; unidades: number; totalCent: number }[];
+  porTipo: { nombre: string; ventas: number; totalCent: number }[];
+  porVendedora: { nombre: string; ventas: number; totalCent: number }[];
+  sinMovimiento: { libroId: number; titulo: string; autor: string; categoria: string; stock: number; costoCent: number; precioCent: number; dias: number }[];
+  sinMovimientoTotal: number;
+  inmovilizadoCent: number;
+}
