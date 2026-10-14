@@ -2,6 +2,7 @@
 
 use libreria_core::Error;
 use libreria_core::clientes::{self, Cliente, ClienteEntrada};
+use libreria_core::qr_pago;
 use libreria_core::ventas::{self, Resumen, TipoCliente, TipoEntrada, Venta, VentaEntrada};
 use tauri::State;
 
@@ -98,5 +99,32 @@ pub fn cliente_crear_rapido(estado: State<Estado>, entrada: ClienteEntrada) -> R
     con_abierta(&estado, |a| {
         a.usuaria()?;
         clientes::crear_rapido(&a.lib.conn, &entrada)
+    })
+}
+
+/// El QR de cobro del negocio como data-URL (None si todavía no se estableció).
+#[tauri::command]
+pub fn qr_pago_obtener(estado: State<Estado>) -> Res<Option<String>> {
+    con_abierta(&estado, |a| {
+        a.usuaria()?;
+        qr_pago::data_url(&a.lib.carpeta)
+    })
+}
+
+#[tauri::command]
+pub fn qr_pago_guardar(estado: State<Estado>, ruta: String) -> Res<Option<String>> {
+    con_abierta(&estado, |a| {
+        a.duena("cambiar el QR de pago")?;
+        let bytes = std::fs::read(&ruta).map_err(|_| Error::Validacion("No se pudo leer ese archivo".into()))?;
+        qr_pago::guardar(&a.lib.carpeta, &bytes)?;
+        qr_pago::data_url(&a.lib.carpeta)
+    })
+}
+
+#[tauri::command]
+pub fn qr_pago_quitar(estado: State<Estado>) -> Res<()> {
+    con_abierta(&estado, |a| {
+        a.duena("cambiar el QR de pago")?;
+        qr_pago::quitar(&a.lib.carpeta)
     })
 }

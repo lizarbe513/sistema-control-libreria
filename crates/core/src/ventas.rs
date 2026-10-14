@@ -72,6 +72,9 @@ pub struct VentaEntrada {
     pub tipo_cliente_id: i64,
     #[serde(default)]
     pub cliente_id: Option<i64>,
+    /// Nombre que dio el cliente (opcional). Vacío: el del cliente registrado o «Cliente».
+    #[serde(default)]
+    pub cliente_nombre: Option<String>,
     /// Descuento al total, después de los de cada libro y el del tipo de cliente.
     #[serde(default)]
     pub descuento: Option<Descuento>,
@@ -269,7 +272,8 @@ pub struct Venta {
     pub usuario_id: i64,
     pub vendedora: String,
     pub cliente_id: Option<i64>,
-    pub cliente: Option<String>,
+    /// Siempre tiene valor: el nombre dado, el del cliente registrado o «Cliente».
+    pub cliente: String,
     pub tipo_nombre: String,
     pub tipo_pct: i64,
     pub subtotal_cent: i64,
@@ -284,9 +288,9 @@ pub struct Venta {
 }
 
 const SELECT_VENTA: &str = "
-    SELECT v.id, v.fecha, v.usuario_id, u.nombre, v.cliente_id, c.nombre, v.tipo_nombre, v.tipo_pct, v.subtotal_cent,
+    SELECT v.id, v.fecha, v.usuario_id, u.nombre, v.cliente_id, v.cliente_nombre, v.tipo_nombre, v.tipo_pct, v.subtotal_cent,
            v.descuento_cent, v.redondeo_cent, v.total_cent, v.anulada, v.anulada_fecha, v.motivo_anulacion
-      FROM ventas v JOIN usuarios u ON u.id = v.usuario_id LEFT JOIN clientes c ON c.id = v.cliente_id";
+      FROM ventas v JOIN usuarios u ON u.id = v.usuario_id ";
 
 fn cargar(conn: &Connection, f: &rusqlite::Row) -> rusqlite::Result<Venta> {
     let id: i64 = f.get(0)?;
@@ -364,10 +368,19 @@ pub fn registrar(conn: &mut Connection, e: &VentaEntrada, quien: &Usuaria) -> Re
         })
         .optional()?
         .ok_or_else(|| Error::NoEncontrado("ese tipo de cliente".into()))?;
-    if let Some(c) = e.cliente_id
-        && tx.query_row("SELECT count(*) FROM clientes WHERE id = ?1", [c], |f| f.get::<_, i64>(0))? == 0
-    {
-        return Err(Error::NoEncontrado("ese cliente".into()));
+    // nombre del cliente: el que escribió la vendedora, o el de la ficha registrada, o «Cliente»
+    let registrado: Option<String> = match e.cliente_id {
+        Some(c) => Some(
+            tx.query_row("SELECT nombre FROM clientes WHERE id = ?1", [c], |f| f.get(0))
+                .optional()?
+                .ok_or_else(|| Error::NoEncontrado("ese cliente".into()))?,
+        ),
+        None => None,
+    };
+    let escrito = e.cliente_nombre.as_deref().map(str::trim).filter(|n| !n.is_empty());
+    let cliente_nombre: String = escrito.map(String::from).or(registrado).unwrap_or_else(|| "Cliente".into());
+    if cliente_nombre.chars().count() > 80 {
+        return invalido("El nombre del cliente es demasiado largo (máximo 80 letras)");
     }
 
     // precios vigentes (el precio que manda la interfaz no se usa: lo que cobra es el de la base)
@@ -418,9 +431,9 @@ pub fn registrar(conn: &mut Connection, e: &VentaEntrada, quien: &Usuaria) -> Re
     }
 
     tx.execute(
-        "INSERT INTO ventas (usuario_id, cliente_id, tipo_cliente_id, tipo_nombre, tipo_pct, subtotal_cent, descuento_cent, redondeo_cent, total_cent)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![quien.id, e.cliente_id, e.tipo_cliente_id, tipo_nombre, tipo_pct, calc.subtotal_cent, calc.descuento_cent, redondeo, total],
+        "INSERT INTO ventas (usuario_id, cliente_id, tipo_cliente_id, tipo_nombre, tipo_pct, subtotal_cent, descuento_cent, redondeo_cent, total_cent, cliente_nombre)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![quien.id, e.cliente_id, e.tipo_cliente_id, tipo_nombre, tipo_pct, calc.subtotal_cent, calc.descuento_cent, redondeo, total, cliente_nombre],
     )?;
     let id = tx.last_insert_rowid();
     for ((i, (titulo, precio)), l) in e.items.iter().zip(&libros).zip(&calc.lineas) {
@@ -559,7 +572,7 @@ mod tests {
     }
 
     fn venta(items: Vec<ItemEntrada>, tipo: i64, pagos: Vec<PagoEntrada>) -> VentaEntrada {
-        VentaEntrada { items, tipo_cliente_id: tipo, cliente_id: None, descuento: None, pagos }
+        VentaEntrada { items, tipo_cliente_id: tipo, cliente_id: None, cliente_nombre: None, descuento: None, pagos }
     }
     fn item(libro_id: i64, cantidad: i64) -> ItemEntrada {
         ItemEntrada { libro_id, cantidad, descuento: None }
@@ -645,6 +658,30 @@ mod tests {
         v.items[0].descuento = Some(Descuento::Monto(350));
         v.pagos = vec![yape(3150)];
         assert!(registrar(&mut m.c, &v, &m.vendedora).is_ok());
+    }
+
+    #[test]
+    fn nombre_del_cliente_es_opcional() {
+        let mut m = mundo();
+        let mut v = venta(vec![item(m.a, 1)], 1, vec![yape(3500)]);
+        // sin nombre: «Cliente»
+        assert_eq!(registrar(&mut m.c, &v, &m.vendedora).unwrap().cliente, "Cliente");
+        // espacios no cuentan; el nombre escrito se conserva (recortado)
+        v.cliente_nombre = Some("   ".into());
+        assert_eq!(registrar(&mut m.c, &v, &m.vendedora).unwrap().cliente, "Cliente");
+        v.cliente_nombre = Some("  Rosa Quispe ".into());
+        assert_eq!(registrar(&mut m.c, &v, &m.vendedora).unwrap().cliente, "Rosa Quispe");
+        // con cliente registrado y sin nombre escrito, usa el de la ficha
+        let c = crate::clientes::crear_rapido(
+            &m.c,
+            &crate::clientes::ClienteEntrada { nombre: "Prof. Mendoza".into(), telefono: String::new(), tipo_cliente_id: Some(2) },
+        )
+        .unwrap();
+        v.cliente_id = Some(c.id);
+        v.cliente_nombre = None;
+        assert_eq!(registrar(&mut m.c, &v, &m.vendedora).unwrap().cliente, "Prof. Mendoza");
+        v.cliente_nombre = Some("x".repeat(81));
+        assert!(registrar(&mut m.c, &v, &m.vendedora).is_err());
     }
 
     #[test]

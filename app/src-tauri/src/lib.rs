@@ -64,6 +64,9 @@ pub fn run() {
             ventas::tope_descuento_fijar,
             ventas::clientes_buscar,
             ventas::cliente_crear_rapido,
+            ventas::qr_pago_obtener,
+            ventas::qr_pago_guardar,
+            ventas::qr_pago_quitar,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar la Librería SIGLO XXI")

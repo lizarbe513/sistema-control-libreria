@@ -10,6 +10,7 @@ pub mod isbn;
 pub mod libros;
 pub mod llave;
 pub mod portadas;
+pub mod qr_pago;
 pub mod tienda;
 pub mod usuarios;
 pub mod ventas;
