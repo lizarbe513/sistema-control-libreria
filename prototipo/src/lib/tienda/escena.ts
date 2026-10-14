@@ -421,11 +421,16 @@ export class EscenaTienda {
     return { bloque: null, celda: [Math.floor(hit.point.x), 0, Math.floor(hit.point.z)] };
   }
 
-  fijarFantasma(celda: [number, number, number] | null, color = '#F27A9B', borrar = false) {
+  /** Fantasma de una celda, o de la caja entre dos esquinas `celda` y `hasta` (modo relleno). */
+  fijarFantasma(celda: [number, number, number] | null, color = '#F27A9B', borrar = false, hasta?: [number, number, number]) {
     this.sucio = true;
     this.fantasma.visible = !!celda;
     if (!celda) return;
-    this.fantasma.position.set(celda[0] + 0.5, celda[1] + 0.5, celda[2] + 0.5);
+    const b = hasta ?? celda;
+    const min = [0, 1, 2].map((i) => Math.min(celda[i], b[i]));
+    const max = [0, 1, 2].map((i) => Math.max(celda[i], b[i]));
+    this.fantasma.scale.set(max[0] - min[0] + 1, max[1] - min[1] + 1, max[2] - min[2] + 1);
+    this.fantasma.position.set((min[0] + max[0] + 1) / 2, (min[1] + max[1] + 1) / 2, (min[2] + max[2] + 1) / 2);
     const m = this.fantasma.material as THREE.MeshBasicMaterial;
     m.color.set(borrar ? '#E0607A' : color);
     m.opacity = borrar ? 0.5 : 0.35;

@@ -193,6 +193,11 @@ se modela con bloques, como en Minecraft**.
 - Las estanterías miran hacia la cámara al colocarlas (como en Minecraft).
 - Fantasma translúcido que muestra dónde caerá el bloque, y etiqueta «Estante B · tramo 3 · repisa 2» al pasar
   el mouse.
+- **Relleno de punta a punta** (`F`): clic en una esquina y clic en la opuesta llena toda la zona, con una
+  «altura del relleno» (p. ej. 6 para una pared de estantes). Con el borrador vacía la zona, contando la altura
+  hacia abajo. Vista previa con la caja translúcida; clic derecho o `Esc` cancela.
+- **Medidas de la tienda** en cuadros de 0,5 m: ancho, largo interior, vereda y alto. La vereda se mueve con la
+  fachada; si al achicar quedan bloques fuera, avisa antes de quitarlos (y se puede deshacer).
 - Vista general / **vista de planta**, deslizador de **altura visible** para editar la parte alta.
 - Panel de estantes: nombre, tema, color, conteo de tramos y repisas, «Nuevo» y borrar.
 - Deshacer / rehacer (`Ctrl+Z` / `Ctrl+Y`), guardado automático y «Restaurar plantilla SIGLO XXI».

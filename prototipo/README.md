@@ -16,7 +16,7 @@ npm run dev      # abre http://localhost:5173
 | **Radio** (arriba a la izquierda) | ▶ para escuchar música; mientras suena, caen pétalos. |
 | **Libreta** | Marcapáginas rosa en el borde izquierdo, o `Ctrl+L`. Guarda sola. |
 | **Fondo** (🎨 junto al avatar, o Ajustes) | 🌸 clic = ráfaga, mueve el mouse = brisa, a veces pasa una mariposa · 🪷 clic = ondas, toca una flor de loto, a veces pasa un koi · 🌌 clic = estrella fugaz, arrastra = constelación |
-| **Mi tienda** | Editor en bloques tipo Minecraft: 1–9 eligen bloque, clic pone, clic derecho quita, arrastrar con clic derecho gira, R rota, Shift+arrastrar hace una fila, Ctrl+Z deshace. |
+| **Mi tienda** | Editor en bloques tipo Minecraft: 1–9 eligen bloque, clic pone, clic derecho quita, arrastrar con clic derecho gira, R rota, Shift+arrastrar hace una fila, **F** rellena de punta a punta (con altura), Ctrl+Z deshace. Medidas de la tienda en el panel derecho. |
 | **Ajustes** | Tu nombre y cómo aparece el libro (6 animaciones o «Sorpresa»). |
 | Ventana angosta (< 760 px) | Vista de celular con barra inferior y ficha del libro. |
 

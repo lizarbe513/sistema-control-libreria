@@ -3,7 +3,7 @@
   import { avisar } from '../estado.svelte';
   import { EscenaTienda } from '../tienda/escena';
   import { PALETA, TIPOS, columnas, infoTipo, ubicacionDe, type Bloque, type TipoBloque } from '../tienda/modelo';
-  import { tienda } from '../tienda/tienda.svelte';
+  import { LIMITES, medidasDe, tienda, type Medidas } from '../tienda/tienda.svelte';
   import Icono from '../componentes/Icono.svelte';
 
   type Herramienta = TipoBloque | 'borrar';
@@ -18,6 +18,22 @@
   let estanteActivo = $state<string | null>('A');
   let nivel = $state(tienda.datos.alto - 1);
   let info = $state<{ x: number; y: number; texto: string } | null>(null);
+
+  // relleno de punta a punta: primer clic marca una esquina, el segundo llena la caja
+  type Celda = [number, number, number];
+  let relleno = $state(false);
+  let esquina = $state<Celda | null>(null);
+  let alturaRelleno = $state(1);
+  const MAX_RELLENO = 6000;
+
+  // medidas (borrador editable; se sincroniza si la tienda cambia, p. ej. al deshacer)
+  let medidas = $state<Medidas>(medidasDe(tienda.datos));
+  $effect(() => {
+    medidas = medidasDe(tienda.datos);
+  });
+  $effect(() => {
+    if (nivel > tienda.datos.alto - 1) nivel = tienda.datos.alto - 1;
+  });
 
   const t = $derived(tienda.datos);
   const resumen = $derived(
@@ -88,6 +104,58 @@
     return celdas;
   }
 
+  /** Celda objetivo según la herramienta: el bloque apuntado (borrar) o la celda vacía (poner). */
+  function objetivo(a: { bloque: Bloque | null; celda: Celda | null }): Celda | null {
+    if (herramienta === 'borrar') return a.bloque ? [a.bloque.x, a.bloque.y, a.bloque.z] : null;
+    return a.celda;
+  }
+
+  /** Esquina opuesta de la caja: misma huella que el cursor; la altura sube al poner y baja al borrar. */
+  const opuesta = (inicio: Celda, c: Celda): Celda => [
+    c[0],
+    herramienta === 'borrar' ? Math.max(0, inicio[1] - alturaRelleno + 1) : inicio[1] + alturaRelleno - 1,
+    c[2],
+  ];
+
+  function rellenar(a: Celda, b: Celda) {
+    const tipo = herramienta;
+    if (tipo === 'borrar') {
+      const n = tienda.quitarCaja(a, b);
+      avisar(n ? `Quitados ${n} bloques` : 'No había bloques ahí');
+      return;
+    }
+    const [x0, x1] = [Math.min(a[0], b[0]), Math.max(a[0], b[0])];
+    const [y0, y1] = [Math.min(a[1], b[1]), Math.max(a[1], b[1])];
+    const [z0, z1] = [Math.min(a[2], b[2]), Math.max(a[2], b[2])];
+    const total = (x1 - x0 + 1) * (y1 - y0 + 1) * (z1 - z0 + 1);
+    if (total > MAX_RELLENO) {
+      avisar(`Demasiado grande (${total} bloques). Máximo ${MAX_RELLENO}.`);
+      return;
+    }
+    const nuevos: Bloque[] = [];
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) nuevos.push(nuevoBloque([x, y, z], tipo));
+    const n = tienda.colocar(nuevos);
+    avisar(n ? `Colocados ${n} bloques` : 'Ese espacio ya estaba lleno');
+  }
+
+  function alternarRelleno() {
+    relleno = !relleno;
+    esquina = null;
+  }
+
+  function aplicarMedidas() {
+    const m: Medidas = { ...medidas };
+    for (const k of Object.keys(LIMITES) as (keyof Medidas)[]) {
+      const [min, max] = LIMITES[k];
+      m[k] = Math.max(min, Math.min(max, Math.round(Number(m[k]) || min)));
+    }
+    const fuera = tienda.fueraCon(m);
+    if (fuera && !confirm(`Con estas medidas quedan fuera ${fuera} bloques y se quitarán. ¿Continuar?`)) return;
+    tienda.redimensionar(m);
+    nivel = m.alto - 1;
+    avisar(`Tienda de ${m.ancho / 2} × ${m.largo / 2} m`);
+  }
+
   // ───────── puntero ─────────
 
   let inicio: { x: number; y: number; boton: number; celda: [number, number, number] | null; fila: boolean } | null = null;
@@ -95,8 +163,13 @@
   function mover(e: PointerEvent) {
     if (!escena) return;
     const a = escena.apuntar(e.clientX, e.clientY);
-    if (herramienta === 'borrar') escena.fijarFantasma(a.bloque ? [a.bloque.x, a.bloque.y, a.bloque.z] : null, '', true);
-    else escena.fijarFantasma(a.celda, infoTipo(herramienta).color);
+    const h = herramienta;
+    const borrar = h === 'borrar';
+    const color = h === 'borrar' ? '' : infoTipo(h).color;
+    const c = objetivo(a);
+    if (relleno && esquina) escena.fijarFantasma(esquina, color, borrar, c ? opuesta(esquina, c) : esquina);
+    else if (relleno && c) escena.fijarFantasma(c, color, borrar, opuesta(c, c));
+    else escena.fijarFantasma(c, color, borrar);
 
     const u = a.bloque ? ubicacionDe(t, a.bloque) : null;
     const r = contenedor.getBoundingClientRect();
@@ -124,7 +197,17 @@
     const quieto = Math.hypot(e.clientX - inicio.x, e.clientY - inicio.y) < 6;
     const a = escena.apuntar(e.clientX, e.clientY);
     if (inicio.boton === 2) {
-      if (quieto && a.bloque) tienda.quitar(a.bloque.x, a.bloque.y, a.bloque.z);
+      if (quieto && relleno && esquina) esquina = null; // clic derecho cancela la esquina
+      else if (quieto && a.bloque) tienda.quitar(a.bloque.x, a.bloque.y, a.bloque.z);
+    } else if (relleno) {
+      const c = objetivo(a);
+      if (quieto && c) {
+        if (!esquina) esquina = c;
+        else {
+          rellenar(esquina, opuesta(esquina, c));
+          esquina = null;
+        }
+      }
     } else if (herramienta === 'borrar') {
       if (a.bloque) tienda.quitar(a.bloque.x, a.bloque.y, a.bloque.z);
     } else if (inicio.fila && inicio.celda && a.celda) {
@@ -150,6 +233,11 @@
     } else if (!ctrl && e.key >= '1' && e.key <= '9') {
       const n = Number(e.key);
       herramienta = n === 9 ? 'borrar' : TIPOS[n - 1].id;
+    } else if (!ctrl && e.key.toLowerCase() === 'f') {
+      alternarRelleno();
+    } else if (e.key === 'Escape' && esquina) {
+      esquina = null;
+      escena?.fijarFantasma(null);
     } else if (!ctrl && e.key.toLowerCase() === 'r') {
       giroExtra = (giroExtra + 1) % 4;
     }
@@ -209,6 +297,15 @@
       <button class="btn btn-blanco" onclick={() => escena?.vistaPlanta()}>Vista de planta</button>
       <button class="btn btn-blanco icono" onclick={() => tienda.deshacer()} disabled={!tienda.puedeDeshacer} title="Deshacer (Ctrl+Z)" aria-label="Deshacer">↶</button>
       <button class="btn btn-blanco icono" onclick={() => tienda.rehacer()} disabled={!tienda.puedeRehacer} title="Rehacer (Ctrl+Y)" aria-label="Rehacer">↷</button>
+      <button class="btn relleno" class:btn-primario={relleno} class:btn-blanco={!relleno} onclick={alternarRelleno} title="Rellenar de punta a punta (F)">
+        ▦ Relleno{relleno ? (esquina ? ' · marca la otra punta' : ' · marca una punta') : ''}
+      </button>
+      {#if relleno}
+        <label class="altura">
+          <span>Altura</span>
+          <input type="number" min="1" max={t.alto} bind:value={alturaRelleno} />
+        </label>
+      {/if}
       <label class="nivel">
         <span>Altura visible</span>
         <input type="range" min="0" max={t.alto - 1} bind:value={nivel} />
@@ -237,12 +334,27 @@
       </div>
       <p class="ayuda">
         <b>Clic</b> poner · <b>Clic derecho</b> quitar · <b>Arrastrar con clic derecho</b> girar · <b>Rueda</b> zoom ·
-        <b>R</b> rotar ({['↓', '←', '↑', '→'][giroExtra]}) · <b>Shift + arrastrar</b> una fila
+        <b>R</b> rotar ({['↓', '←', '↑', '→'][giroExtra]}) · <b>Shift + arrastrar</b> una fila · <b>F</b> relleno de punta a punta
       </p>
     </div>
   </div>
 
   <aside class="panel vidrio">
+    <details class="medidas">
+      <summary><strong>Medidas de la tienda</strong> <span class="atenuado">{t.ancho / 2} × {t.fachada / 2} m</span></summary>
+      <p class="atenuado">En cuadros de 0,5 m. La vereda se mueve junto con la fachada.</p>
+      <div class="campos">
+        {#each [['ancho', 'Ancho'], ['largo', 'Largo (interior)'], ['vereda', 'Vereda'], ['alto', 'Alto']] as const as [k, nombre]}
+          <label>
+            <span>{nombre}</span>
+            <input type="number" min={LIMITES[k][0]} max={LIMITES[k][1]} bind:value={medidas[k]} />
+            <small>{(Number(medidas[k]) || 0) / 2} m</small>
+          </label>
+        {/each}
+      </div>
+      <button class="btn btn-suave" onclick={aplicarMedidas}>Aplicar medidas</button>
+    </details>
+
     <div class="cab">
       <h2 class="titulo-seccion">Estantes</h2>
       <button class="btn btn-suave" onclick={nuevo}><Icono nombre="mas" tam={16} /> Nuevo</button>
@@ -329,6 +441,64 @@
   .btn:disabled {
     opacity: 0.45;
     cursor: default;
+  }
+  .relleno {
+    font-size: 14px;
+  }
+  .altura {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow: var(--sombra-suave);
+  }
+  .altura input,
+  .campos input {
+    width: 56px;
+    font: inherit;
+    font-weight: 800;
+    border: 2px solid var(--linea);
+    border-radius: 10px;
+    padding: 3px 6px;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .medidas {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 10px 12px;
+  }
+  .medidas summary {
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .medidas[open] {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .campos {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .campos label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .campos small {
+    color: var(--muted);
+    font-size: 11px;
   }
   .nivel {
     display: flex;

@@ -6,6 +6,31 @@ import { clave, indice, nuevoEstante, plantillaSigloXXI, type Bloque, type Estan
 
 const VERSION = 1;
 
+/** Medidas en celdas de 0,5 m: interior (ancho × largo), vereda y altura. */
+export interface Medidas {
+  ancho: number;
+  largo: number;
+  vereda: number;
+  alto: number;
+}
+
+export const LIMITES: Record<keyof Medidas, [number, number]> = {
+  ancho: [6, 60],
+  largo: [6, 60],
+  vereda: [1, 16],
+  alto: [3, 16],
+};
+
+export const medidasDe = (t: Tienda): Medidas => ({ ancho: t.ancho, largo: t.fachada, vereda: t.fondo - t.fachada, alto: t.alto });
+
+/** Lleva un bloque a las nuevas medidas: lo de la vereda acompaña a la fachada. `null` si queda fuera. */
+function ajustar(b: Bloque, t: Tienda, m: Medidas): Bloque | null {
+  if (b.x >= m.ancho || b.y >= m.alto) return null;
+  if (b.z < t.fachada) return b.z < m.largo ? b : null; // interior
+  const z = b.z - t.fachada + m.largo; // vereda
+  return z < m.largo + m.vereda ? { ...b, z } : null;
+}
+
 function cargar(): Tienda {
   const g = leer<{ v: number; t: Tienda } | null>('tienda', null);
   return g && g.v === VERSION && Array.isArray(g.t?.bloques) ? g.t : plantillaSigloXXI();
@@ -56,6 +81,29 @@ class Almacen {
   quitar(x: number, y: number, z: number) {
     const resto = this.datos.bloques.filter((b) => b.x !== x || b.y !== y || b.z !== z);
     if (resto.length !== this.datos.bloques.length) this.aplicar({ ...this.datos, bloques: resto });
+  }
+
+  /** Quita todos los bloques dentro de la caja [a, b] en un solo paso de deshacer. */
+  quitarCaja(a: [number, number, number], b: [number, number, number]) {
+    const min = [0, 1, 2].map((i) => Math.min(a[i], b[i]));
+    const max = [0, 1, 2].map((i) => Math.max(a[i], b[i]));
+    const dentro = (x: Bloque) =>
+      x.x >= min[0] && x.x <= max[0] && x.y >= min[1] && x.y <= max[1] && x.z >= min[2] && x.z <= max[2];
+    const resto = this.datos.bloques.filter((x) => !dentro(x));
+    const n = this.datos.bloques.length - resto.length;
+    if (n) this.aplicar({ ...this.datos, bloques: resto });
+    return n;
+  }
+
+  /** Bloques que quedarían fuera con otras medidas (para avisar antes de aplicar). */
+  fueraCon(m: Medidas) {
+    return this.datos.bloques.filter((b) => !ajustar(b, this.datos, m)).length;
+  }
+
+  /** Cambia las medidas. Lo que está en la vereda se mueve con la fachada; lo que queda fuera se quita. */
+  redimensionar(m: Medidas) {
+    const bloques = this.datos.bloques.map((b) => ajustar(b, this.datos, m)).filter((b): b is Bloque => !!b);
+    this.aplicar({ ...this.datos, ancho: m.ancho, fachada: m.largo, fondo: m.largo + m.vereda, alto: m.alto, bloques });
   }
 
   /** Gira un bloque existente (escaleras, estanterías…). */
