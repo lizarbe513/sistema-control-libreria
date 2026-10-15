@@ -1,10 +1,14 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { app, avisar, type Vista } from '../estado.svelte';
+  import { alAtras, anotarVista, escucharAtras } from '../atras.svelte';
+  import { app, type Vista } from '../estado.svelte';
   import Ajustes from '../vistas/Ajustes.svelte';
   import Buscar from '../vistas/Buscar.svelte';
   import Inicio from '../vistas/Inicio.svelte';
+  import Libros from '../vistas/Libros.svelte';
+  import Mas from '../vistas/Mas.svelte';
   import Pendiente from '../vistas/Pendiente.svelte';
   import Escanear from '../vistas/Escanear.svelte';
   import Vender from '../vistas/Vender.svelte';
@@ -19,8 +23,50 @@
     { id: 'buscar', nombre: 'Buscar', icono: 'buscar' },
     { id: 'vender', nombre: 'Venta', icono: 'mas' },
     { id: 'encargos', nombre: 'Encargos', icono: 'encargos' },
-    { id: 'ajustes', nombre: 'Perfil', icono: 'usuario' },
+    { id: 'mas', nombre: 'Más', icono: 'menu' },
   ];
+  const ORDEN = TABS.map((t) => t.id);
+
+  onMount(() => void escucharAtras());
+
+  // dirección de la animación al cambiar de panel (deslizando o con la barra)
+  let direccion = $state(0);
+  let previa: Vista = app.vista;
+  $effect(() => {
+    const v = app.vista;
+    const [a, b] = [ORDEN.indexOf(previa), ORDEN.indexOf(v)];
+    direccion = a >= 0 && b >= 0 ? Math.sign(b - a) : 0;
+    previa = v;
+    anotarVista(v);
+  });
+
+  // la ficha abierta se cierra con «atrás»
+  $effect(() => {
+    if (app.fichaMovil) return alAtras(() => (app.fichaMovil = false));
+  });
+
+  // ── deslizar entre paneles ──
+  let inicio: { x: number; y: number; t: number } | null = null;
+  function tocar(e: TouchEvent) {
+    const objetivo = e.target as HTMLElement;
+    if (e.touches.length !== 1 || app.fichaMovil || objetivo.closest('input, textarea, select, canvas, [data-sin-deslizar], .cajon, [role="dialog"]')) {
+      inicio = null;
+      return;
+    }
+    inicio = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+  }
+  function soltar(e: TouchEvent) {
+    if (!inicio) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - inicio.x;
+    const dy = t.clientY - inicio.y;
+    const rapido = Date.now() - inicio.t < 600;
+    inicio = null;
+    const i = ORDEN.indexOf(app.vista);
+    if (i < 0 || !rapido || Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+    const siguiente = ORDEN[i + (dx < 0 ? 1 : -1)];
+    if (siguiente) app.vista = siguiente;
+  }
 </script>
 
 <div class="movil shell" data-vacio>
@@ -36,24 +82,32 @@
     </button>
   </header>
 
-  <main class="contenido" data-vacio>
-    {#if app.vista === 'inicio'}
-      <Inicio movil />
-    {:else if app.vista === 'buscar'}
-      <Buscar movil />
-    {:else if app.vista === 'vender'}
-      <Vender movil />
-    {:else if app.vista === 'encargos'}
-      <Encargos movil />
-    {:else if app.vista === 'reportes'}
-      <Reportes movil />
-    {:else if app.vista === 'ajustes'}
-      <Ajustes />
-    {:else if app.vista === 'escanear'}
-      <Escanear />
-    {:else}
-      <Pendiente vista={app.vista} />
-    {/if}
+  <main class="contenido" data-vacio ontouchstart={tocar} ontouchend={soltar}>
+    {#key app.vista}
+      <div class="panel" in:fly={{ x: direccion * 50, duration: direccion ? 260 : 0, easing: cubicOut, opacity: 0.2 }} data-vacio>
+        {#if app.vista === 'inicio'}
+          <Inicio movil />
+        {:else if app.vista === 'buscar'}
+          <Buscar movil />
+        {:else if app.vista === 'vender'}
+          <Vender movil />
+        {:else if app.vista === 'encargos'}
+          <Encargos movil />
+        {:else if app.vista === 'reportes'}
+          <Reportes movil />
+        {:else if app.vista === 'libros'}
+          <Libros />
+        {:else if app.vista === 'mas'}
+          <Mas />
+        {:else if app.vista === 'ajustes'}
+          <Ajustes />
+        {:else if app.vista === 'escanear'}
+          <Escanear />
+        {:else}
+          <Pendiente vista={app.vista} />
+        {/if}
+      </div>
+    {/key}
   </main>
 
   <nav class="barra-inferior">
@@ -63,7 +117,7 @@
           <Icono nombre="mas" tam={28} grosor={2.6} />
         </button>
       {:else}
-        <button class="tab" class:activo={app.vista === tab.id} onclick={() => (app.vista = tab.id)}>
+        <button class="tab" class:activo={app.vista === tab.id || (tab.id === 'mas' && ['libros', 'reportes', 'ajustes'].includes(app.vista))} onclick={() => (app.vista = tab.id)}>
           <Icono nombre={tab.icono} tam={22} />
           <span>{tab.nombre}</span>
         </button>

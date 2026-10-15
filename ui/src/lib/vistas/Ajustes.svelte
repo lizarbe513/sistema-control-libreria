@@ -12,6 +12,9 @@
   import TiposCliente from '../componentes/TiposCliente.svelte';
   import Usuarias from '../componentes/Usuarias.svelte';
   import { inventario } from '../inventario.svelte';
+  import { avisoActivo, avisarLectura, fijarAviso } from '../escaner';
+
+  let avisoEscaneo = $state(avisoActivo());
 
   async function cambiarPermiso(valor: boolean) {
     try {
@@ -146,6 +149,28 @@
     <p class="atenuado">Elige el ambiente. Interactúa con los espacios vacíos del fondo: ¡cada uno esconde algo!</p>
     <SelectorFondo grande />
   </section>
+
+  {#if api.esCelular}
+    <section class="vidrio bloque">
+      <h2 class="titulo-seccion">Este celular</h2>
+      <label class="interruptor">
+        <div>
+          <strong>Sonido y vibración al escanear</strong>
+          <span class="atenuado">Un «bip» y una vibración corta cada vez que la cámara lee un código.</span>
+        </div>
+        <input
+          type="checkbox"
+          checked={avisoEscaneo}
+          onchange={(e) => {
+            avisoEscaneo = e.currentTarget.checked;
+            fijarAviso(avisoEscaneo);
+            avisarLectura();
+          }}
+        />
+        <span class="pastilla" aria-hidden="true"></span>
+      </label>
+    </section>
+  {/if}
 
   <section class="vidrio bloque">
     <h2 class="titulo-seccion">Calma</h2>

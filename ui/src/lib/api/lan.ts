@@ -50,6 +50,10 @@ export function leerQr(texto: string): { hosts: string[]; puerto: number; codigo
 
 class ErrorLan extends Error {
   vincular = false;
+  /** Ninguna dirección respondió (o respondió otro equipo): quizá el PC cambió de IP. */
+  get sinRed() {
+    return /^(No se pudo conectar|El certificado)/.test(this.message);
+  }
 }
 
 /** Una petición al PC, probando cada dirección. En la app va por Rust (que fija el certificado); en un navegador, por fetch. */
@@ -96,7 +100,39 @@ export class ApiLan extends ApiTauri {
   readonly esCelular = true;
   private cfg: ConfigLan | null = leerConfigLan();
 
+  private ultimaBusqueda = 0;
+
+  /** Si el router le cambió la IP al PC: lo busca en la misma red por la huella de su certificado (como mucho cada 20 s). */
+  private async redescubrir(): Promise<boolean> {
+    const cfg = this.cfg;
+    if (!cfg || !enTauri || Date.now() - this.ultimaBusqueda < 20_000) return false;
+    this.ultimaBusqueda = Date.now();
+    window.dispatchEvent(new CustomEvent('lan-buscando'));
+    try {
+      const host = await invoke<string | null>('lan_descubrir', { hosts: cfg.hosts, puerto: cfg.puerto, huella: cfg.huella });
+      if (!host) return false;
+      this.cfg = { ...cfg, hosts: [host, ...cfg.hosts.filter((h) => h !== host)] };
+      guardarConfigLan(this.cfg);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   protected async llamar<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+    if (!this.cfg) throw new Error('Este celular todavía no está vinculado con el PC');
+    try {
+      return await this.llamarUnaVez<T>(cmd, args);
+    } catch (e) {
+      // sin conexión con ninguna dirección conocida: quizá el PC cambió de IP
+      if (e instanceof ErrorLan && e.sinRed && (await this.redescubrir())) {
+        return this.llamarUnaVez<T>(cmd, args);
+      }
+      throw e;
+    }
+  }
+
+  private async llamarUnaVez<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
     const cfg = this.cfg;
     if (!cfg) throw new Error('Este celular todavía no está vinculado con el PC');
     try {
@@ -180,5 +216,10 @@ export class ApiLan extends ApiTauri {
       window.open(url, '_blank', 'noopener');
     }
     return { encargo, url };
+  }
+
+  /** En el celular la foto viaja como data-URL (el PC no puede leer una ruta del teléfono). */
+  override portadaDesdeArchivo(id: number, origen: string) {
+    return this.llamar<import('./tipos').LibroApi>('portada_desde_datos', { id, datos: origen });
   }
 }

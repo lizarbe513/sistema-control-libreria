@@ -5,6 +5,7 @@
   import { api, type Encargo } from '../api';
   import { soles } from '../datos';
   import { app, avisar } from '../estado.svelte';
+  import { alAtras } from '../atras.svelte';
   import { encargosCambio, encargosUI, ESTADOS, type Carta } from '../encargos.svelte';
 
   let { carta }: { carta: Carta } = $props();
@@ -24,6 +25,7 @@
   function cerrar() {
     encargosUI.carta = null;
   }
+  $effect(() => alAtras(cerrar));
 
   async function paso(i: number, accion: () => Promise<Encargo>) {
     ocupado = filas[i].id;

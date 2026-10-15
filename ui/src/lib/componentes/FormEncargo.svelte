@@ -1,5 +1,6 @@
 <script lang="ts">
   // Nuevo encargo: quién lo pide, qué libro (del inventario o escrito a mano), cantidad, notas y adelanto opcional.
+  import { alAtras } from '../atras.svelte';
   import { fly } from 'svelte/transition';
   import { api, type Cliente, type Metodo, type ResultadoLinea } from '../api';
   import { soles, type Libro } from '../datos';
@@ -14,6 +15,8 @@
   import IconoMetodo from './IconoMetodo.svelte';
 
   let { precarga, onCerrar }: { precarga: Precarga; onCerrar: () => void } = $props();
+  // en el celular, «atrás» cierra esto
+  $effect(() => alAtras(() => onCerrar()));
 
   // ── cliente ──
   let cliente = $state<Cliente | null>(null);

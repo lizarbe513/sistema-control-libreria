@@ -1,7 +1,7 @@
 // Estado global de la interfaz (runas de Svelte 5).
 import type { Libro } from './datos';
 
-export type Vista = 'inicio' | 'buscar' | 'libros' | 'vender' | 'encargos' | 'reportes' | 'asistente' | 'tienda' | 'ajustes' | 'escanear';
+export type Vista = 'inicio' | 'buscar' | 'libros' | 'vender' | 'encargos' | 'reportes' | 'asistente' | 'tienda' | 'ajustes' | 'escanear' | 'mas';
 export type FondoId = 'petalos' | 'estanque' | 'cielo';
 export type AnimLibro = 'aleatoria' | 'caida' | 'estante' | 'pluma' | 'trompo' | 'pop' | 'volteo';
 export type FondoOpcion = FondoId | 'hora' | 'quieto';

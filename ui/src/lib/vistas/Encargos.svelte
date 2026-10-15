@@ -13,7 +13,9 @@
 
   let { movil = false }: { movil?: boolean } = $props();
 
-  let pestana = $state<'tablero' | 'clientes'>('tablero');
+  // svelte-ignore state_referenced_locally
+  let pestana = $state<'tablero' | 'clientes'>(encargosUI.pestana ?? 'tablero');
+  encargosUI.pestana = null;
   let activos = $state<Encargo[]>([]);
   let cerrados = $state<Encargo[]>([]);
   let verCerrados = $state(false);

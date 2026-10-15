@@ -5,11 +5,19 @@
   import MarcoAcceso from './MarcoAcceso.svelte';
 
   let ocupado = $state(false);
+  let buscandoRed = $state(false);
+
+  // la app avisa cuando sale a buscar al PC por la red (si el router le cambió la IP)
+  $effect(() => {
+    const alBuscar = () => (buscandoRed = true);
+    window.addEventListener('lan-buscando', alBuscar);
+    return () => window.removeEventListener('lan-buscando', alBuscar);
+  });
 
   async function reintentar() {
     ocupado = true;
     await arrancar();
-    ocupado = false;
+    ocupado = buscandoRed = false;
   }
 
   async function otra() {
@@ -27,7 +35,7 @@
       <li>El celular debe estar en el <b>mismo WiFi</b> que el PC.</li>
       <li>En el PC, Ajustes → Celulares debe estar encendido.</li>
     </ul>
-    <button class="btn btn-primario" onclick={reintentar} disabled={ocupado}>{ocupado ? 'Buscando…' : 'Reintentar'}</button>
+    <button class="btn btn-primario" onclick={reintentar} disabled={ocupado}>{ocupado ? (buscandoRed ? 'Buscando el PC en la red…' : 'Conectando…') : 'Reintentar'}</button>
     <button class="enlace" onclick={otra}>Vincular con otro PC</button>
   </div>
 </MarcoAcceso>

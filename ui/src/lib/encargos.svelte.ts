@@ -16,7 +16,7 @@ export interface Carta {
   encargos: Encargo[];
 }
 
-export const encargosUI = $state({ version: 0, nuevo: null as Precarga | null, carta: null as Carta | null });
+export const encargosUI = $state({ version: 0, nuevo: null as Precarga | null, carta: null as Carta | null, pestana: null as 'tablero' | 'clientes' | null });
 
 export function encargosCambio() {
   encargosUI.version++;

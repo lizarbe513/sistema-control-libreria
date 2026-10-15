@@ -1,18 +1,23 @@
 <script lang="ts">
   // Escaneo continuo de ISBN con la cámara del celular: escanear → si ya está, sumar stock; si es nuevo, completar los
-  // datos y guardarlo → siguiente. Pensado para cargar el inventario recorriendo los estantes.
+  // datos y guardarlo → siguiente. Pensado para cargar el inventario recorriendo los estantes: la ubicación elegida se
+  // recuerda para el siguiente libro. Los libros sin código de barras se registran con una foto de la portada.
   import { onDestroy, onMount } from 'svelte';
   import { normalizarIsbn } from '../api/demo';
-  import { api, type Sugerencia } from '../api';
+  import { api, type ResultadoLinea, type Sugerencia, type UbicacionApi } from '../api';
   import { soles, type Libro } from '../datos';
   import { app, avisar } from '../estado.svelte';
   import { revisarLlegada } from '../encargos.svelte';
   import { aCentimos, inventario, inventarioCambio, vista } from '../inventario.svelte';
-  import { cancelarLectura, hayCamara, leer, permisoCamara } from '../escaner';
+  import { avisarLectura, cancelarLectura, hayCamara, leer, permisoCamara } from '../escaner';
+  import { tomarFoto } from '../foto';
+  import { alAtras } from '../atras.svelte';
   import { miniatura } from '../portada';
   import { esDuena } from '../sesion.svelte';
+  import BuscadorLinea from '../componentes/BuscadorLinea.svelte';
+  import SelectorUbicacion from '../componentes/SelectorUbicacion.svelte';
 
-  type Fase = 'apuntando' | 'buscando' | 'existente' | 'nuevo';
+  type Fase = 'apuntando' | 'buscando' | 'existente' | 'nuevo' | 'sinCodigo';
   let fase = $state<Fase>('apuntando');
   let mensaje = $state('');
   let activo = true;
@@ -25,6 +30,7 @@
   // libro que ya estaba
   let existente = $state<Libro | null>(null);
   let cuantos = $state('1');
+  let moviendo = $state(false);
 
   // libro nuevo
   let sug = $state<Sugerencia | null>(null);
@@ -37,87 +43,211 @@
   let stock = $state('1');
   let categoria = $state('literarias');
   let guardando = $state(false);
+  /** Foto tomada con el celular (data-URL): sirve de portada si internet no trae una. */
+  let foto = $state<string | null>(null);
 
-  onMount(() => {
-    if (hayCamara) document.documentElement.classList.add('camara');
-    void ciclo();
-  });
+  // la ubicación se recuerda entre libros (y entre tandas): lo normal es escanear un estante entero
+  const CLAVE_UBICACION = 'escaneo-ubicacion';
+  let ubicacion = $state<UbicacionApi | null>(leerUbicacion());
+  function leerUbicacion(): UbicacionApi | null {
+    try {
+      return JSON.parse(localStorage.getItem(CLAVE_UBICACION) ?? 'null');
+    } catch {
+      return null;
+    }
+  }
+  function fijarUbicacion(u: UbicacionApi | null) {
+    ubicacion = u;
+    try {
+      localStorage.setItem(CLAVE_UBICACION, JSON.stringify(u));
+    } catch {
+      /* sin almacenamiento */
+    }
+  }
+
+  onMount(() => void ciclo());
   onDestroy(() => {
     activo = false;
     document.documentElement.classList.remove('camara');
     void cancelarLectura();
   });
 
+  // el fondo se vuelve transparente solo mientras la cámara mira
+  $effect(() => {
+    document.documentElement.classList.toggle('camara', hayCamara && fase === 'apuntando');
+  });
+
+  // «atrás» con un libro a la vista vuelve a apuntar (sin salir del escáner)
+  $effect(() => {
+    if (fase === 'existente' || fase === 'nuevo' || fase === 'sinCodigo') return alAtras(siguiente);
+  });
+
   /** Escucha la cámara hasta que lee un código; lo procesa y espera a que se pida el siguiente. */
+  let vuelta = 0;
   async function ciclo() {
     if (!hayCamara) return;
+    const mia = ++vuelta; // un ciclo viejo (cancelado) no debe seguir leyendo junto al nuevo
+    const sigue = () => activo && mia === vuelta && fase === 'apuntando';
     if (!(await permisoCamara())) {
       mensaje = 'Sin permiso de la cámara no se puede escanear. Puedes escribir el ISBN a mano.';
       return;
     }
-    while (activo && fase === 'apuntando') {
+    while (sigue()) {
       try {
         const codigo = await leer('ean13', true);
-        if (!activo) return;
-        if (codigo) await procesar(codigo);
+        if (!sigue()) return;
+        if (codigo) await procesar(codigo, true);
         else return;
       } catch (e) {
+        if (!sigue()) return;
         mensaje = (e as Error).message;
         await new Promise((r) => setTimeout(r, 1500));
       }
     }
   }
 
-  async function procesar(codigo: string) {
+  async function existentePorIsbn(n: string): Promise<Libro | null> {
+    const lista = await api.buscarLibros(n, { limite: 5 });
+    const l = lista.find((x) => x.isbn === n);
+    return l ? vista(l) : null;
+  }
+
+  function mostrarExistente(l: Libro) {
+    existente = l;
+    cuantos = '1';
+    moviendo = false;
+    fase = 'existente';
+  }
+
+  async function procesar(codigo: string, conCamara = false) {
     const n = normalizarIsbn(codigo.replace(/\D/g, ''));
     if (!n) {
+      if (conCamara) avisarLectura(false);
       mensaje = `«${codigo}» no es el ISBN de un libro. Apunta al código de barras de la contratapa.`;
       return;
     }
+    if (conCamara) avisarLectura();
     mensaje = '';
     fase = 'buscando';
     try {
-      const lista = await api.buscarLibros(n, { limite: 5 });
-      const l = lista.find((x) => x.isbn === n);
-      if (l) {
-        existente = vista(l);
-        cuantos = '1';
-        fase = 'existente';
-        return;
-      }
-      isbn = n;
-      sug = await api.consultarIsbn(n).catch(() => null);
-      titulo = sug?.titulo ?? '';
-      autor = sug?.autor ?? '';
-      editorial = sug?.editorial ?? '';
-      precio = costo = '';
-      stock = '1';
-      fase = 'nuevo';
+      const l = await existentePorIsbn(n);
+      if (l) return mostrarExistente(l);
+      llenarNuevo(n, await api.consultarIsbn(n).catch(() => null));
     } catch (e) {
       mensaje = (e as Error).message;
       fase = 'apuntando';
     }
   }
 
+  function llenarNuevo(n: string, s: Sugerencia | null) {
+    isbn = n;
+    sug = s;
+    titulo = s?.titulo ?? '';
+    autor = s?.autor ?? '';
+    editorial = s?.editorial ?? '';
+    precio = costo = '';
+    stock = '1';
+    fase = 'nuevo';
+  }
+
   function siguiente() {
     existente = null;
     sug = null;
+    foto = null;
     mensaje = '';
     fase = 'apuntando';
     void ciclo();
   }
+
+  // ── libros sin código de barras: foto de la portada → búsqueda por título ──
+  async function sinCodigo() {
+    fase = 'sinCodigo';
+    sug = null;
+    await cancelarLectura();
+    await fotografiar();
+  }
+
+  async function fotografiar() {
+    try {
+      const f = await tomarFoto();
+      if (f) foto = f;
+    } catch (e) {
+      avisar((e as Error).message);
+    }
+  }
+
+  async function elegirEnLinea(r: ResultadoLinea) {
+    const n = r.isbn ? normalizarIsbn(r.isbn) : null;
+    if (n) {
+      const l = await existentePorIsbn(n).catch(() => null);
+      if (l) return mostrarExistente(l);
+    }
+    llenarNuevo(n ?? '', { isbn: n ?? '', titulo: r.titulo, autor: r.autor, editorial: r.editorial, anio: r.anio, sinopsis: '', portadaUrl: r.portadaUrl, fuente: r.fuente });
+  }
+
+  /** La portada que se verá: la de internet o, si no hay, la foto. */
+  const portadaNueva = $derived(sug?.portadaUrl ?? foto);
 
   async function sumar(n: number) {
     if (!existente || !Number.isInteger(n) || n < 1) return void avisar('Escribe cuántos ejemplares llegaron (1 o más)');
     try {
       const l = await api.ajustarStock(existente.id, n, 'ingreso', 'Escaneado con el celular');
       existente = vista(l);
-      titulos.add(l.id);
-      titulos = new Set(titulos);
-      ejemplares += n;
-      inventarioCambio();
+      contar(l.id, n);
       avisar(`+${n} · ahora ${l.stock} ✓`);
       void revisarLlegada({ id: l.id, titulo: l.titulo, stock: l.stock }, false);
+    } catch (e) {
+      avisar((e as Error).message);
+    }
+  }
+
+  function contar(id: number, n: number) {
+    titulos.add(id);
+    titulos = new Set(titulos);
+    ejemplares += n;
+    inventarioCambio();
+  }
+
+  /** Cambia la ubicación de un libro que ya estaba (se guarda la ficha completa; el costo lo cuida el PC). */
+  async function mover(u: UbicacionApi | null) {
+    const l = existente;
+    if (!l) return;
+    try {
+      const g = await api.guardarLibro({
+        id: l.id,
+        isbn: l.isbn,
+        titulo: l.titulo,
+        autor: l.autor,
+        editorial: l.editorial,
+        anio: l.anio,
+        sinopsis: l.sinopsis,
+        categoria: l.categoria,
+        formato: l.formato,
+        precioCent: l.precio,
+        costoCent: null,
+        stockMinimo: l.stockMinimo,
+        ubicacion: u,
+        etiquetas: l.etiquetas,
+        colorTapa: l.tapa,
+      });
+      existente = vista(g);
+      if (u) fijarUbicacion(u);
+      inventarioCambio();
+      avisar(u ? 'Ubicación cambiada 📍' : 'Ubicación quitada');
+    } catch (e) {
+      avisar((e as Error).message);
+    }
+  }
+
+  async function fotoComoPortada() {
+    const l = existente;
+    if (!l) return;
+    const f = await tomarFoto().catch(() => null);
+    if (!f) return;
+    try {
+      existente = vista(await api.portadaDesdeArchivo(l.id, f));
+      inventarioCambio();
+      avisar('Portada cambiada 📸');
     } catch (e) {
       avisar((e as Error).message);
     }
@@ -133,12 +263,27 @@
     if (c === null || !Number.isInteger(n) || n < 0) return void avisar('Revisa el costo y el stock');
     guardando = true;
     try {
-      let l = await api.guardarLibro({ isbn, titulo, autor, editorial, anio: sug?.anio ?? null, sinopsis: sug?.sinopsis ?? '', categoria, precioCent: p, costoCent: esDuena() ? c : null, stock: n });
-      if (sug?.portadaUrl) l = await api.portadaDesdeUrl(l.id, sug.portadaUrl).catch(() => l);
-      titulos.add(l.id);
-      titulos = new Set(titulos);
-      ejemplares += n;
-      inventarioCambio();
+      let l = await api.guardarLibro({
+        isbn: isbn || null,
+        titulo,
+        autor,
+        editorial,
+        anio: sug?.anio ?? null,
+        sinopsis: sug?.sinopsis ?? '',
+        categoria,
+        precioCent: p,
+        costoCent: esDuena() ? c : null,
+        stock: n,
+        ubicacion: $state.snapshot(ubicacion),
+      });
+      // la portada va aparte: si falla, el libro igual queda guardado
+      try {
+        if (sug?.portadaUrl) l = await api.portadaDesdeUrl(l.id, sug.portadaUrl);
+        else if (foto) l = await api.portadaDesdeArchivo(l.id, foto);
+      } catch (x) {
+        avisar(`El libro se guardó, pero la portada no: ${(x as Error).message}`);
+      }
+      contar(l.id, n);
       avisar(`«${l.titulo}» agregado 📚`);
       void revisarLlegada({ id: l.id, titulo: l.titulo, stock: l.stock }, true);
       siguiente();
@@ -154,7 +299,7 @@
   }
 </script>
 
-<div class="escaner" class:con-camara={hayCamara} data-vacio>
+<div class="escaner" class:con-camara={hayCamara && fase === 'apuntando'} data-vacio>
   <header>
     <strong>📷 Escanear libros</strong>
     <span class="cuenta" data-testid="cuenta-escaneo">{titulos.size} {titulos.size === 1 ? 'título' : 'títulos'} · {ejemplares} {ejemplares === 1 ? 'ejemplar' : 'ejemplares'}</span>
@@ -173,13 +318,17 @@
         <input bind:value={manual} inputmode="numeric" placeholder="ISBN (978…)" aria-label="ISBN a mano" disabled={fase === 'buscando'} />
         <button class="btn btn-suave" disabled={fase === 'buscando' || !manual.trim()}>Buscar</button>
       </form>
+      <div class="pie">
+        <button class="btn btn-blanco" onclick={sinCodigo} disabled={fase === 'buscando'} data-testid="sin-codigo">📸 Sin código de barras</button>
+        <span class="lugar" data-testid="lugar-escaneo">📍 {ubicacion ? 'Ubicación elegida para los nuevos' : 'Nuevos sin ubicación'}</span>
+      </div>
     {:else if fase === 'existente' && existente}
       <div class="libro" data-testid="escaneo-existente">
         <img src={existente.portada ?? miniatura(existente)} alt="" />
         <div class="datos">
           <span class="etiqueta ya">Ya lo tienes</span>
           <strong>{existente.titulo}</strong>
-          <small>{existente.autor} · {soles(existente.precio)}</small>
+          <small>{[existente.autor, soles(existente.precio)].filter(Boolean).join(' · ')}</small>
           <span class="stock" class:cero={existente.stock === 0}>{existente.stock === 0 ? 'Agotado' : `Stock: ${existente.stock}`}</span>
         </div>
       </div>
@@ -189,14 +338,41 @@
         <input bind:value={cuantos} inputmode="numeric" aria-label="Cantidad a sumar" />
         <button class="btn btn-suave" onclick={() => sumar(Number(cuantos))}>Sumar</button>
       </div>
+      {#if moviendo}
+        <SelectorUbicacion valor={existente.ubicacion} onCambio={mover} />
+      {/if}
+      <div class="extras">
+        <button class="btn btn-blanco" onclick={() => (moviendo = !moviendo)} data-testid="mover-libro">📍 {moviendo ? 'Listo' : existente.ubicacion ? 'Cambiar ubicación' : 'Ponerle ubicación'}</button>
+        <button class="btn btn-blanco" onclick={fotoComoPortada}>📸 Foto como portada</button>
+      </div>
       <div class="acciones"><button class="btn btn-primario grande" onclick={siguiente}>Siguiente libro 📷</button></div>
+    {:else if fase === 'sinCodigo'}
+      <div class="sin-codigo" data-testid="escaneo-sin-codigo">
+        <div class="cab">
+          {#if foto}<img src={foto} alt="Foto de la portada" data-testid="foto-portada" />{:else}<span class="hueco">📸</span>{/if}
+          <div class="datos">
+            <span class="etiqueta nuevo">Sin código de barras</span>
+            <small class="atenuado">Escribe el título que ves en la portada y búscalo en internet. La foto queda como portada si internet no trae una.</small>
+          </div>
+        </div>
+        <div class="extras">
+          <button class="btn btn-blanco" onclick={fotografiar}>{foto ? '📸 Otra foto' : '📸 Tomar la foto'}</button>
+          <button class="btn btn-blanco" disabled title="Llega con el asistente (Hito 8)">✨ Leer la portada (IA)</button>
+        </div>
+        <small class="atenuado nota">«Leer la portada» llega con el asistente (Hito 8).</small>
+        <BuscadorLinea onElegir={elegirEnLinea} />
+        <div class="acciones">
+          <button type="button" class="btn btn-blanco" onclick={siguiente}>Volver</button>
+          <button type="button" class="btn btn-suave" onclick={() => llenarNuevo('', null)}>Llenar a mano</button>
+        </div>
+      </div>
     {:else if fase === 'nuevo'}
       <form class="nuevo" onsubmit={guardar} data-testid="escaneo-nuevo">
         <div class="cab">
-          {#if sug?.portadaUrl}<img src={sug.portadaUrl} alt="" />{/if}
+          {#if portadaNueva}<img src={portadaNueva} alt="" />{/if}
           <div>
-            <span class="etiqueta nuevo">Libro nuevo · {isbn}</span>
-            {#if !sug}<small class="atenuado">No encontré datos en internet: escríbelos a mano.</small>{/if}
+            <span class="etiqueta nuevo">Libro nuevo · {isbn || 'sin ISBN'}</span>
+            {#if !sug}<small class="atenuado">{isbn ? 'No encontré datos en internet: escríbelos a mano.' : 'Escribe los datos a mano.'}</small>{/if}
           </div>
         </div>
         <label>Título<input bind:value={titulo} aria-label="Título" /></label>
@@ -210,6 +386,13 @@
           Categoría
           <select bind:value={categoria} aria-label="Categoría">{#each inventario.categorias as c (c.clave)}<option value={c.clave}>{c.nombre}</option>{/each}</select>
         </label>
+        <div class="campo">
+          <span>Ubicación <small class="atenuado">(se recuerda para el siguiente)</small></span>
+          <SelectorUbicacion valor={ubicacion} onCambio={fijarUbicacion} mapa={false} />
+        </div>
+        {#if !sug?.portadaUrl}
+          <button type="button" class="btn btn-blanco" onclick={fotografiar}>{foto ? '📸 Otra foto de portada' : '📸 Foto como portada'}</button>
+        {/if}
         <div class="acciones">
           <button type="button" class="btn btn-blanco" onclick={siguiente}>Omitir</button>
           <button class="btn btn-primario" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar y siguiente'}</button>
@@ -405,6 +588,57 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
     gap: 8px;
+  }
+  .pie,
+  .extras {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .pie {
+    justify-content: space-between;
+  }
+  .lugar {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .extras .btn {
+    flex: 1;
+  }
+  .extras .btn:disabled {
+    opacity: 0.45;
+    filter: grayscale(0.6);
+  }
+  .sin-codigo {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sin-codigo :global(form) {
+    grid-template-columns: 1fr;
+  }
+  .hueco {
+    width: 54px;
+    height: 80px;
+    display: grid;
+    place-items: center;
+    border-radius: 6px;
+    background: var(--surface-2);
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .nota {
+    margin-top: -4px;
+    font-size: 11px;
+  }
+  .campo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 800;
   }
   .grande {
     height: 50px;

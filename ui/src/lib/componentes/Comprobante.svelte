@@ -1,6 +1,7 @@
 <script lang="ts">
   // Resumen de la venta recién hecha, como un papelito de caja, con el Osito y una explosión de pétalos.
   // No es un comprobante de pago (sin SUNAT): solo el resumen para la vendedora y el cliente.
+  import { alAtras } from '../atras.svelte';
   import { fly, scale } from 'svelte/transition';
   import type { Venta } from '../api';
   import { soles } from '../datos';
@@ -10,6 +11,8 @@
   import Osito from './Osito.svelte';
 
   let { venta, onCerrar }: { venta: Venta; onCerrar: () => void } = $props();
+  // en el celular, «atrás» cierra esto
+  $effect(() => alAtras(() => onCerrar()));
 
   const fecha = $derived(new Date(venta.fecha).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }));
   const vuelto = $derived(venta.pagos.reduce((s, p) => s + (p.vueltoCent ?? 0), 0));

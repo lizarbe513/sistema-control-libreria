@@ -1,6 +1,7 @@
 <script lang="ts">
   // Cajón para agregar o editar un libro: ISBN con datos desde internet, portada, precios, stock y
   // la ubicación elegida tocando la tienda 3D.
+  import { alAtras } from '../atras.svelte';
   import { onDestroy, untrack } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { api, type Formato, type LibroApi, type ResultadoLinea, type Sugerencia, type UbicacionApi } from '../api';
@@ -16,6 +17,8 @@
   import Tienda3D from './Tienda3D.svelte';
 
   let { libro, onCerrar, onGuardado }: { libro: Libro | null; onCerrar: () => void; onGuardado?: (l: Libro) => void } = $props();
+  // en el celular, «atrás» cierra esto
+  $effect(() => alAtras(() => onCerrar()));
 
   const nuevo = $derived(!libro);
   const duena = $derived(esDuena());

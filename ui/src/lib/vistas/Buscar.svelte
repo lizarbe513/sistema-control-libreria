@@ -10,6 +10,9 @@
   import { app, avisar } from '../estado.svelte';
   import { inventario, vista } from '../inventario.svelte';
   import { miniatura } from '../portada';
+  import { normalizarIsbn } from '../api/demo';
+  import { alAtras } from '../atras.svelte';
+  import { avisarLectura, cancelarLectura, hayCamara, leer, permisoCamara } from '../escaner';
 
   let { movil = false }: { movil?: boolean } = $props();
   let categoria = $state<CategoriaId | null>(null);
@@ -79,6 +82,50 @@
   $effect(() => {
     if (!movil) entrada?.focus();
   });
+
+  // ── escanear un libro para ver su ficha (celular) ──
+  let lector = $state(false);
+  /** ISBN escaneado que no está en la tienda: se ofrece encargarlo. */
+  let faltante = $state<{ isbn: string; titulo: string; autor: string } | null>(null);
+
+  async function escanear() {
+    if (lector) return;
+    if (!(await permisoCamara())) return void avisar('Sin permiso de la cámara no se puede escanear');
+    lector = true;
+    const quitar = alAtras(() => void cancelarLectura());
+    try {
+      const codigo = await leer('ean13');
+      if (codigo) await verCodigo(codigo);
+    } catch (e) {
+      avisar((e as Error).message);
+    } finally {
+      quitar();
+      lector = false;
+    }
+  }
+
+  async function verCodigo(codigo: string) {
+    const n = normalizarIsbn(codigo.replace(/\D/g, ''));
+    if (!n) {
+      avisarLectura(false);
+      return void avisar(`«${codigo}» no es el ISBN de un libro`);
+    }
+    avisarLectura();
+    const l = (await api.buscarLibros(n, { limite: 5 })).find((x) => x.isbn === n);
+    if (l) return elegir(vista(l));
+    const s = await api.consultarIsbn(n).catch(() => null);
+    faltante = { isbn: n, titulo: s?.titulo ?? '', autor: s?.autor ?? '' };
+  }
+
+  $effect(() => {
+    if (faltante) return alAtras(() => (faltante = null));
+  });
+
+  function encargarFaltante() {
+    const f = faltante;
+    faltante = null;
+    if (f) abrirNuevoEncargo({ titulo: f.titulo || f.isbn, autor: f.autor });
+  }
 </script>
 
 <div class="buscar" class:movil data-vacio>
@@ -94,9 +141,23 @@
     {#if app.consulta}
       <button class="limpiar" onclick={() => (app.consulta = '')} aria-label="Borrar búsqueda"><Icono nombre="cerrar" tam={18} /></button>
     {/if}
+    {#if movil && hayCamara}
+      <button class="limpiar camara" onclick={escanear} disabled={lector} aria-label="Escanear el código de un libro" data-testid="buscar-escanear">📷</button>
+    {/if}
   </div>
 
-  <div class="chips-fila" data-vacio>
+  {#if faltante}
+    <div class="faltante tarjeta" role="alert" data-testid="no-lo-tenemos" in:fly={{ y: -10, duration: 250 }}>
+      <div>
+        <strong>No lo tenemos</strong>
+        <small>{faltante.titulo ? `«${faltante.titulo}»${faltante.autor ? ` · ${faltante.autor}` : ''}` : `ISBN ${faltante.isbn}`}</small>
+      </div>
+      <button class="btn btn-primario" onclick={encargarFaltante}>¿Lo encargamos?</button>
+      <button class="limpiar" onclick={() => (faltante = null)} aria-label="Cerrar"><Icono nombre="cerrar" tam={16} /></button>
+    </div>
+  {/if}
+
+  <div class="chips-fila" data-vacio data-sin-deslizar>
     <button class="filtro" class:activo={categoria === null} onclick={() => (categoria = null)}>Todas</button>
     {#each Object.values(CATEGORIAS) as c}
       <button
@@ -221,6 +282,29 @@
     color: var(--muted);
     display: grid;
     place-items: center;
+  }
+  .camara {
+    font-size: 20px;
+    padding: 0 2px;
+  }
+  .faltante {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-left: 4px solid var(--primary);
+  }
+  .faltante div {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .faltante small {
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .chips-fila {
     display: flex;

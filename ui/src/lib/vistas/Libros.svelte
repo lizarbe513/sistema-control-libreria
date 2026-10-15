@@ -93,7 +93,7 @@
       <option value="">Todas las categorías</option>
       {#each inventario.categorias as c (c.clave)}<option value={c.clave}>{c.nombre}</option>{/each}
     </select>
-    <div class="filtros" role="radiogroup" aria-label="Filtro">
+    <div class="filtros" role="radiogroup" aria-label="Filtro" data-sin-deslizar>
       {#each FILTROS as f (f.id)}
         <button class="filtro" class:activo={filtro === f.id} onclick={() => (filtro = f.id)} role="radio" aria-checked={filtro === f.id}>{f.nombre}</button>
       {/each}
@@ -323,5 +323,31 @@
     margin: 0;
     color: var(--muted);
     font-weight: 600;
+  }
+  /* celular: filas compactas y filtros que se desplazan */
+  @media (max-width: 760px) {
+    h1 {
+      font-size: 26px;
+    }
+    .buscador {
+      min-width: 0;
+      flex-basis: 100%;
+    }
+    .filtros {
+      overflow-x: auto;
+      max-width: 100%;
+      padding-bottom: 4px;
+    }
+    .filtro {
+      white-space: nowrap;
+    }
+    .fila {
+      grid-template-columns: minmax(0, 1fr) auto auto 36px;
+      padding: 6px 8px 6px 6px;
+    }
+    .cat,
+    .ubic {
+      display: none;
+    }
   }
 </style>

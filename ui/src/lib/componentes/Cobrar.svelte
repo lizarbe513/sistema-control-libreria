@@ -1,5 +1,6 @@
 <script lang="ts">
   // Cobro de la venta: uno o varios pagos (efectivo con vuelto, tarjeta, Yape/Plin, transferencia).
+  import { alAtras } from '../atras.svelte';
   import { fly } from 'svelte/transition';
   import { api, type Metodo, type PagoEntrada, type Venta } from '../api';
   import { soles } from '../datos';
@@ -10,6 +11,8 @@
   import { efectivoSugerido, redondeoEfectivo } from '../ventas/calculo';
 
   let { onCerrar, onListo }: { onCerrar: () => void; onListo: (v: Venta) => void } = $props();
+  // en el celular, «atrás» cierra esto
+  $effect(() => alAtras(() => onCerrar()));
 
   const calc = $derived(calculoActual());
   let pagos = $state<PagoEntrada[]>([]);

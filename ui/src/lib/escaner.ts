@@ -39,3 +39,48 @@ export async function cancelarLectura() {
     /* ya estaba cancelada */
   }
 }
+
+// ── aviso al leer un código: vibración corta y un «bip» suave (se puede apagar en Ajustes) ──
+const CLAVE_AVISO = 'escaneo-aviso';
+
+export function avisoActivo(): boolean {
+  try {
+    return localStorage.getItem(CLAVE_AVISO) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function fijarAviso(activo: boolean) {
+  try {
+    localStorage.setItem(CLAVE_AVISO, activo ? '1' : '0');
+  } catch {
+    /* sin almacenamiento */
+  }
+}
+
+let audio: AudioContext | null = null;
+
+export function avisarLectura(bien = true) {
+  if (!avisoActivo()) return;
+  try {
+    navigator.vibrate?.(bien ? 90 : [60, 60, 60]);
+  } catch {
+    /* sin vibración */
+  }
+  try {
+    audio ??= new AudioContext();
+    const o = audio.createOscillator();
+    const g = audio.createGain();
+    o.type = 'sine';
+    o.frequency.value = bien ? 1320 : 330;
+    g.gain.setValueAtTime(0.0001, audio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.18, audio.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + (bien ? 0.12 : 0.25));
+    o.connect(g).connect(audio.destination);
+    o.start();
+    o.stop(audio.currentTime + 0.3);
+  } catch {
+    /* sin audio */
+  }
+}
