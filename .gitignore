@@ -21,6 +21,18 @@ Thumbs.db
 .idea/
 .vscode/
 
-# App Tauri
-app/src-tauri/gen/
+# App Tauri (el proyecto de Android se versiona —lleva cambios propios en Kotlin—, sin lo que se genera al compilar)
+app/src-tauri/gen/schemas/
+app/src-tauri/gen/android/**/build/
+app/src-tauri/gen/android/**/.gradle/
+app/src-tauri/gen/android/.kotlin/
+app/src-tauri/gen/android/local.properties
+app/src-tauri/gen/android/app/src/main/jniLibs/
+app/src-tauri/gen/android/app/src/main/assets/
+app/src-tauri/gen/android/app/tauri.build.gradle.kts
+app/src-tauri/gen/android/tauri.settings.gradle
+app/src-tauri/gen/android/app/tauri.properties
+# llaves de firma: nunca en el repositorio
+*.jks
+*.keystore
 ui/dist/
