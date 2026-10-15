@@ -381,3 +381,29 @@ export interface ResultadoRespaldo {
   /** Algo que la Dueña debe saber (p. ej. la carpeta externa no estaba conectada). El interno sí se hizo. */
   aviso: string | null;
 }
+
+// ── celulares vinculados (solo la Dueña) ──
+export interface DispositivoCelular {
+  id: number;
+  nombre: string;
+  creado: string;
+  ultimoUso: string | null;
+  revocado: boolean;
+}
+export interface EstadoCelulares {
+  /** La Dueña lo encendió (se recuerda). */
+  activo: boolean;
+  /** El servidor está escuchando ahora. */
+  corriendo: boolean;
+  puerto: number | null;
+  direcciones: string[];
+  dispositivos: DispositivoCelular[];
+}
+export interface CodigoVinculo {
+  codigo: string;
+  segundos: number;
+  /** Lo que lleva el QR. */
+  texto: string;
+  /** El QR como SVG. */
+  svg: string;
+}

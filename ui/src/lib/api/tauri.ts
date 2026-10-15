@@ -6,6 +6,8 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  CodigoVinculo,
+  EstadoCelulares,
   EstadoRespaldos,
   ResultadoRespaldo,
   ConsultaReporte,
@@ -269,5 +271,17 @@ export class ApiTauri implements Api {
   }
   recuperarPin(id: number, contrasena: string, pinNuevo: string) {
     return this.llamar<void>('pin_recuperar', { id, contrasena, pinNuevo });
+  }
+  estadoCelulares() {
+    return this.llamar<EstadoCelulares>('celulares_estado');
+  }
+  activarCelulares(activo: boolean) {
+    return this.llamar<EstadoCelulares>('celulares_activar', { activo });
+  }
+  codigoCelular() {
+    return this.llamar<CodigoVinculo>('celulares_codigo');
+  }
+  desconectarCelular(id: number) {
+    return this.llamar<EstadoCelulares>('celulares_desconectar', { id });
   }
 }

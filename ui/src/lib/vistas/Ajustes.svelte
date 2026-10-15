@@ -3,6 +3,7 @@
   import { app, avisar, guardar, type AnimLibro } from '../estado.svelte';
   import { api } from '../api';
   import { cerrarSesion, esDuena, sesion } from '../sesion.svelte';
+  import Celulares from '../componentes/Celulares.svelte';
   import CambiarContrasena from '../componentes/CambiarContrasena.svelte';
   import Respaldos from '../componentes/Respaldos.svelte';
   import MargenEncargos from '../componentes/MargenEncargos.svelte';
@@ -99,6 +100,11 @@
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Respaldos</h2>
       <Respaldos />
+    </section>
+
+    <section class="vidrio bloque">
+      <h2 class="titulo-seccion">Celulares</h2>
+      <Celulares />
     </section>
 
     <section class="vidrio bloque">

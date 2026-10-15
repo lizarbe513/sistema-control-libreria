@@ -3,6 +3,8 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  CodigoVinculo,
+  EstadoCelulares,
   EstadoRespaldos,
   ResultadoRespaldo,
   ConsultaReporte,
@@ -140,4 +142,11 @@ export interface Api {
   cambiarContrasena(actual: string, nueva: string): Promise<boolean>;
   /** «Olvidé mi PIN» de la Dueña: con la contraseña maestra. */
   recuperarPin(id: number, contrasena: string, pinNuevo: string): Promise<void>;
+
+  // ── celulares (el servidor local del PC) ──
+  estadoCelulares(): Promise<EstadoCelulares>;
+  activarCelulares(activo: boolean): Promise<EstadoCelulares>;
+  /** Un código de un solo uso (5 minutos) con su QR, para vincular un celular. */
+  codigoCelular(): Promise<CodigoVinculo>;
+  desconectarCelular(id: number): Promise<EstadoCelulares>;
 }

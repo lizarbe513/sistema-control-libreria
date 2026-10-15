@@ -10,6 +10,8 @@ import type {
   CategoriaApi,
   Cliente,
   ClienteEntrada,
+  CodigoVinculo,
+  EstadoCelulares,
   EstadoRespaldos,
   ResultadoRespaldo,
   Respaldo,
@@ -133,6 +135,8 @@ interface Datos {
   margen?: number;
   respaldoExterno?: string | null;
   respaldoConservar?: number;
+  celularesActivo?: boolean;
+  celulares?: { id: number; nombre: string; creado: string; ultimoUso: string | null; revocado: boolean }[];
 }
 
 type EncargoDemo = Omit<Encargo, 'cliente' | 'telefono' | 'adelantoCent' | 'precioCent' | 'stock' | 'portada' | 'colorTapa' | 'formato' | 'categoria'>;
@@ -1244,5 +1248,38 @@ export class ApiDemo implements Api {
     u.pin = pinNuevo;
     this.fallos.delete(id);
     this.persistir();
+  }
+
+  // ── celulares (simulado: en la demostración no hay servidor) ──
+  async estadoCelulares(): Promise<EstadoCelulares> {
+    this.exigirDuena('conectar celulares');
+    const activo = !!this.d.celularesActivo;
+    return { activo, corriendo: activo, puerto: activo ? 47321 : null, direcciones: ['192.168.1.34'], dispositivos: [...(this.d.celulares ?? [])].sort((a, b) => Number(a.revocado) - Number(b.revocado) || b.id - a.id) };
+  }
+
+  async activarCelulares(activo: boolean) {
+    this.exigirDuena('conectar celulares');
+    this.d.celularesActivo = activo;
+    this.persistir();
+    return this.estadoCelulares();
+  }
+
+  async codigoCelular(): Promise<CodigoVinculo> {
+    this.exigirDuena('conectar celulares');
+    if (!this.d.celularesActivo) throw new Error('Primero enciende «Conectar celulares»');
+    const codigo = Array.from({ length: 8 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
+    // un «QR» de mentira (cuadritos) solo para ver cómo queda la pantalla
+    let celdas = '';
+    for (let y = 0; y < 21; y++) for (let x = 0; x < 21; x++) if ((x * 7 + y * 13 + codigo.charCodeAt((x + y) % 8)) % 3 === 0) celdas += `<rect x="${x + 2}" y="${y + 2}" width="1" height="1"/>`;
+    return { codigo, segundos: 300, texto: `siglo://vincular?h=192.168.1.34&p=47321&c=${codigo}&f=demo&n=${encodeURIComponent(this.d.tienda || 'SIGLO XXI')}`, svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 25 25" shape-rendering="crispEdges"><rect width="25" height="25" fill="#fff"/><g fill="#000">${celdas}</g></svg>` };
+  }
+
+  async desconectarCelular(id: number) {
+    this.exigirDuena('conectar celulares');
+    const c = (this.d.celulares ?? []).find((x) => x.id === id);
+    if (!c || c.revocado) throw new Error('No se encontró ese celular');
+    c.revocado = true;
+    this.persistir();
+    return this.estadoCelulares();
   }
 }
