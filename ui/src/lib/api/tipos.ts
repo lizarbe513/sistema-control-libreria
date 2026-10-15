@@ -409,3 +409,26 @@ export interface CodigoVinculo {
   /** El QR como SVG. */
   svg: string;
 }
+
+// ── asistente de IA (hito 8) ──
+export interface MensajeChat {
+  rol: 'usuaria' | 'asistente';
+  texto: string;
+}
+
+export interface RespuestaAsistente {
+  texto: string;
+  /** Quién respondió: «Gemini» o «Groq» (o «Demostración»). */
+  proveedor: string;
+  /** Los libros citados como [[libro:ID]], para mostrarlos como fichas. */
+  libros: LibroApi[];
+}
+
+export interface ProveedorIa {
+  id: 'gemini' | 'groq';
+  nombre: string;
+  configurada: boolean;
+  /** Las últimas 4 letras de la clave (la clave entera nunca vuelve a la interfaz). */
+  finalClave: string;
+  modelo: string;
+}

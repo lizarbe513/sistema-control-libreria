@@ -72,7 +72,8 @@ async function pedir(cfg: { hosts: string[]; puerto: number; huella: string }, m
   for (const host of cfg.hosts) {
     try {
       const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), 5000);
+      // el asistente puede tardar (varias consultas a la IA); lo demás responde enseguida
+      const t = setTimeout(() => ctl.abort(), ruta.includes('/asistente_') ? 150_000 : 5000);
       const r = await fetch(`https://${host}:${cfg.puerto}${ruta}`, {
         method: metodo,
         headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },

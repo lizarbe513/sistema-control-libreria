@@ -8,7 +8,18 @@
   "permissions": [
     "core:default",
     "dialog:allow-open",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://aistudio.google.com/*"
+        },
+        {
+          "url": "https://console.groq.com/*"
+        }
+      ]
+    }
   ],
   "platforms": [
     "linux",

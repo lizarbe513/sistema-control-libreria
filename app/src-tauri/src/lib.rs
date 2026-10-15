@@ -1,6 +1,8 @@
 //! App de escritorio (Tauri 2) de la Librería SIGLO XXI.
 
 #[cfg(not(target_os = "android"))]
+mod asistente;
+#[cfg(not(target_os = "android"))]
 mod celular;
 #[cfg(not(target_os = "android"))]
 mod comandos;
@@ -108,6 +110,10 @@ fn escritorio() {
             comandos::usuaria_editar,
             comandos::usuaria_quitar,
             comandos::olvidar_llave,
+            asistente::asistente_preguntar,
+            asistente::asistente_config,
+            asistente::asistente_guardar_config,
+            asistente::asistente_probar,
             inventario::categorias,
             inventario::categoria_crear,
             inventario::categoria_editar,

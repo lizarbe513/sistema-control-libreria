@@ -8,7 +8,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
 use crate::estado::{Estado, como_celular};
-use crate::{comandos, encargos, inventario, reportes, ventas};
+use crate::{asistente, comandos, encargos, inventario, reportes, ventas};
 
 type Res<T> = std::result::Result<T, Error>;
 
@@ -141,6 +141,22 @@ pub async fn ejecutar(app: &AppHandle, cmd: &str, args: Value, usuaria: Option<U
             })
             .await
             .map_err(|_| Error::Validacion("La orden se interrumpió".into()))?
+        }
+        // asistente: se prepara con la sesión del celular y la conversación va por internet sin el candado
+        "asistente_preguntar" => {
+            #[derive(serde::Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct A {
+                historial: Vec<asistente::MensajeChat>,
+                tz_min: i64,
+            }
+            let a: A = serde_json::from_value(args).map_err(arg_err)?;
+            let app2 = app.clone();
+            let tz = a.tz_min;
+            let p = tauri::async_runtime::spawn_blocking(move || como_celular(usuaria, || asistente::preparar(&app2.state::<Estado>(), tz)))
+                .await
+                .map_err(|_| Error::Validacion("La orden se interrumpió".into()))??;
+            salida(asistente::responder(app, p, a.historial, a.tz_min).await)
         }
         // WhatsApp: el PC no abre nada; devuelve la dirección y el celular la abre
         "encargo_avisar_whatsapp" => {

@@ -6,6 +6,7 @@
   import { esDuena } from '../sesion.svelte';
 
   const tarjetas = $derived<{ vista: Vista; nombre: string; detalle: string; icono: NombreIcono; antes?: () => void }[]>([
+    { vista: 'asistente', nombre: 'Asistente', detalle: 'Pregúntale por libros, stock y ventas', icono: 'asistente' },
     { vista: 'libros', nombre: 'Libros', detalle: 'Todo el inventario, stock y edición', icono: 'libro' },
     { vista: 'encargos', nombre: 'Clientes', detalle: 'Fichas, compras y encargos', icono: 'usuario', antes: () => (encargosUI.pestana = 'clientes') },
     ...(esDuena() ? [{ vista: 'reportes' as Vista, nombre: 'Reportes', detalle: 'Ventas, caja y lo más vendido', icono: 'reportes' as NombreIcono }] : []),

@@ -12,6 +12,7 @@
   import Pendiente from '../vistas/Pendiente.svelte';
   import Escanear from '../vistas/Escanear.svelte';
   import Nuevo from '../vistas/Nuevo.svelte';
+  import Asistente from '../vistas/Asistente.svelte';
   import { registrar } from '../registro.svelte';
   import Vender from '../vistas/Vender.svelte';
   import Encargos from '../vistas/Encargos.svelte';
@@ -101,6 +102,8 @@
           <Reportes movil />
         {:else if app.vista === 'libros'}
           <Libros />
+        {:else if app.vista === 'asistente'}
+          <Asistente movil />
         {:else if app.vista === 'mas'}
           <Mas />
         {:else if app.vista === 'ajustes'}
@@ -121,7 +124,7 @@
           <Icono nombre="mas" tam={28} grosor={2.6} />
         </button>
       {:else}
-        <button class="tab" class:activo={app.vista === tab.id || (tab.id === 'mas' && ['libros', 'reportes', 'ajustes'].includes(app.vista))} onclick={() => (app.vista = tab.id)}>
+        <button class="tab" class:activo={app.vista === tab.id || (tab.id === 'mas' && ['libros', 'reportes', 'ajustes', 'asistente'].includes(app.vista))} onclick={() => (app.vista = tab.id)}>
           <Icono nombre={tab.icono} tam={22} />
           <span>{tab.nombre}</span>
         </button>

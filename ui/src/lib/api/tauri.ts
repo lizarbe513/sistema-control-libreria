@@ -4,6 +4,9 @@ import type { Api } from './contrato';
 import type { Tienda } from '../tienda/modelo';
 import type {
   CategoriaApi,
+  MensajeChat,
+  ProveedorIa,
+  RespuestaAsistente,
   Cliente,
   ClienteEntrada,
   CodigoVinculo,
@@ -253,6 +256,18 @@ export class ApiTauri implements Api {
   }
   margenEncargos(valor?: number) {
     return this.llamar<number>('margen_encargos', { pct: valor ?? null });
+  }
+  asistentePreguntar(historial: MensajeChat[]) {
+    return this.llamar<RespuestaAsistente>('asistente_preguntar', { historial, tzMin: -new Date().getTimezoneOffset() });
+  }
+  asistenteConfig() {
+    return this.llamar<ProveedorIa[]>('asistente_config');
+  }
+  asistenteGuardarConfig(proveedor: string, clave: string | null, modelo: string | null) {
+    return this.llamar<ProveedorIa[]>('asistente_guardar_config', { proveedor, clave, modelo });
+  }
+  asistenteProbar(proveedor: string, clave: string | null) {
+    return this.llamar<string[]>('asistente_probar', { proveedor, clave });
   }
   reporte(consulta: ConsultaReporte) {
     return this.llamar<Reporte>('reporte', { consulta });

@@ -1,6 +1,9 @@
 import type { Tienda } from '../tienda/modelo';
 import type {
   CategoriaApi,
+  MensajeChat,
+  ProveedorIa,
+  RespuestaAsistente,
   Cliente,
   ClienteEntrada,
   CodigoVinculo,
@@ -130,6 +133,15 @@ export interface Api {
 
   // ── reportes (solo la Dueña) ──
   reporte(c: ConsultaReporte): Promise<Reporte>;
+
+  // asistente de IA
+  asistentePreguntar(historial: MensajeChat[]): Promise<RespuestaAsistente>;
+  /** Solo la Dueña, solo en el PC. */
+  asistenteConfig(): Promise<ProveedorIa[]>;
+  /** `clave`: null la deja como está, '' la borra. */
+  asistenteGuardarConfig(proveedor: string, clave: string | null, modelo: string | null): Promise<ProveedorIa[]>;
+  /** Prueba la clave (la guardada, o una nueva sin guardarla) y devuelve los modelos disponibles. */
+  asistenteProbar(proveedor: string, clave: string | null): Promise<string[]>;
   /** Pide dónde guardar y escribe el CSV. Devuelve la ruta (o null si se cancela). */
   exportarReporte(tipo: TipoCsv, c: ConsultaReporte, nombreSugerido: string): Promise<string | null>;
 

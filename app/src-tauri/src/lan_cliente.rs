@@ -132,7 +132,7 @@ pub async fn pedir(
         None => Bytes::new(),
     };
     let req = req.body(Full::new(datos)).map_err(|e| e.to_string())?;
-    let resp = tokio::time::timeout(Duration::from_secs(60), envio.send_request(req))
+    let resp = tokio::time::timeout(Duration::from_secs(150), envio.send_request(req))
         .await
         .map_err(|_| "El PC tardó demasiado en responder".to_string())?
         .map_err(|e| e.to_string())?;

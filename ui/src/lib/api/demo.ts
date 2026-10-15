@@ -8,6 +8,9 @@ import type { Tienda } from '../tienda/modelo';
 import type { Api } from './contrato';
 import type {
   CategoriaApi,
+  MensajeChat,
+  ProveedorIa,
+  RespuestaAsistente,
   Cliente,
   ClienteEntrada,
   CodigoVinculo,
@@ -1101,6 +1104,42 @@ export class ApiDemo implements Api {
   // ── reportes (el cálculo real vive en Rust; esto es una versión sencilla para ver la interfaz) ──
   private ventasDe(c: ConsultaReporte) {
     return (this.d.ventas ?? []).filter((v) => v.fecha >= c.desde && v.fecha < c.hasta);
+  }
+
+  // ── asistente (demostración: sin IA, responde buscando en los libros de ejemplo) ──
+  private iaDemo: ProveedorIa[] = [
+    { id: 'gemini', nombre: 'Gemini', configurada: false, finalClave: '', modelo: 'gemini-3.8-flash' },
+    { id: 'groq', nombre: 'Groq', configurada: false, finalClave: '', modelo: 'llama-3.3-70b-versatile' },
+  ];
+
+  async asistentePreguntar(historial: MensajeChat[]): Promise<RespuestaAsistente> {
+    await espera();
+    this.exigirSesion();
+    const pregunta = historial.at(-1)?.texto ?? '';
+    const palabras = pregunta.toLowerCase().split(/\s+/).filter((w) => w.length > 3).slice(0, 4).join(' ');
+    const libros = (await this.buscarLibros(palabras, { soloConStock: true, limite: 3 })).slice(0, 3);
+    const texto = libros.length
+      ? `Esto es una demostración (sin IA). Encontré en la tienda:\n${libros.map((l) => `- [[libro:${l.id}]]`).join('\n')}`
+      : 'Esto es una demostración (sin IA). En la app real, el asistente responde con los datos de tu tienda.';
+    return { texto, proveedor: 'Demostración', libros };
+  }
+
+  async asistenteConfig() {
+    this.exigirDuena('configurar el asistente');
+    return structuredClone(this.iaDemo);
+  }
+
+  async asistenteGuardarConfig(proveedor: string, clave: string | null, modelo: string | null) {
+    this.exigirDuena('configurar el asistente');
+    const p = this.iaDemo.find((x) => x.id === proveedor);
+    if (!p) throw new Error('Proveedor desconocido');
+    if (clave !== null) Object.assign(p, { configurada: !!clave.trim(), finalClave: clave.trim().slice(-4) });
+    if (modelo) p.modelo = modelo;
+    return structuredClone(this.iaDemo);
+  }
+
+  async asistenteProbar(): Promise<string[]> {
+    throw new Error('En la demostración no hay conexión con la IA');
   }
 
   async reporte(c: ConsultaReporte): Promise<Reporte> {

@@ -12,6 +12,7 @@
   import TiposCliente from '../componentes/TiposCliente.svelte';
   import Usuarias from '../componentes/Usuarias.svelte';
   import Categorias from '../componentes/Categorias.svelte';
+  import AsistenteConfig from '../componentes/AsistenteConfig.svelte';
   import { inventario } from '../inventario.svelte';
   import { avisoActivo, avisarLectura, fijarAviso } from '../escaner';
 
@@ -105,6 +106,13 @@
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Respaldos</h2>
       <Respaldos />
+    </section>
+    {/if}
+
+    {#if !api.esCelular}
+    <section class="vidrio bloque">
+      <h2 class="titulo-seccion">Asistente IA</h2>
+      <AsistenteConfig />
     </section>
     {/if}
 

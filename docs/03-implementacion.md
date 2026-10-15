@@ -373,6 +373,67 @@ instala permitiendo «orígenes desconocidos» para esa app. Con el teléfono co
     se administran en Ajustes → Categorías (Dueña: renombrar, color, eliminar).
   - La interfaz ya no tiene una lista fija: `categorias.svelte.ts` es un registro reactivo alimentado por la base.
 
+## Asistente IA (hito 8)
+
+**Idea:** una asistente que lee la tienda por ti y la resume: qué libros hay, cuáles se agotaron, qué reponer,
+recomendaciones del inventario real y, para la Dueña, ventas, ganancias y reportes. También redacta mensajes para
+clientes. Funciona en el PC y en el celular (Más → Asistente).
+
+**Proveedores** (`crates/core/src/ia.rs`):
+- Gemini como principal y Groq como respaldo, los dos con plan gratuito. Ambos tienen un endpoint **compatible con
+  OpenAI** (`/chat/completions` con `tools`, `/models`), así que hay un solo cliente (`OpenAiCompat`) con dos
+  configuraciones.
+- Si un proveedor falla, se pasa al siguiente y se queda con él durante esa conversación:
+  - sin red, sin cupo (429) o error del servidor;
+  - con una clave inválida (401/403) se explica que hay que revisarla en Ajustes.
+- Los mensajes del modelo vuelven **tal cual** (Gemini exige devolver sus firmas de pensamiento).
+- El modelo de cada proveedor se elige en Ajustes. Los nombres de los modelos gratuitos cambian; «Probar» lista los que
+  la clave puede usar.
+
+**Herramientas** (`crates/core/src/asistente.rs`): el modelo no ve la base. Solo puede pedir herramientas, que la app
+ejecuta con los permisos de quien pregunta:
+- **para todos:** `buscar_libros`, `catalogo` (hojear una categoría en formato compacto, para recomendar por gustos),
+  `detalle_libro`, `resumen_inventario`, `agotados_y_por_agotarse`, `categorias`, `encargos_activos`,
+  `sugerir_reposicion`;
+- **solo la Dueña:** `reporte_ventas` (totales, ganancia, caja por método, por vendedora y por categoría, inmovilizado),
+  `mas_vendidos`, `libros_sin_movimiento`, y los costos y el valor del inventario. A los demás ni se les ofrecen, y si
+  el modelo las pide igual, no se ejecutan.
+- Hasta 5 rondas de herramientas por pregunta; en la última se le pide responder con lo que juntó.
+
+**Privacidad:**
+- Ninguna herramienta devuelve nombres, teléfonos ni notas de clientes. Los encargos van solo con título, cantidad y
+  estado. Hay una prueba que lo verifica, y el e2e confirma que el servidor de IA nunca los recibe.
+- La conversación queda solo en memoria y se borra si entra otra persona.
+
+**Citas de libros:**
+- El modelo cita los libros como `[[libro:ID]]` y la interfaz los muestra como fichas (portada, precio, stock,
+  ubicación) que abren el libro.
+- Los ids que no salieron de una herramienta se borran (`depurar_citas`): el modelo no puede inventar libros.
+
+**Configuración:**
+- Ajustes → Asistente IA (Dueña, en el PC) trae los pasos para sacar las claves gratis en Google AI Studio y en
+  console.groq.com.
+- Las claves se guardan en `config`, **dentro de la base cifrada**; a la interfaz solo vuelven sus últimas 4 letras.
+
+**Celular:** `asistente_preguntar` va por `rpc.rs`:
+- se prepara con la sesión del celular (rol incluido) y la conversación con la IA corre sin el candado del estado;
+- el tiempo de espera del celular para esa orden es de 150 s.
+
+**Probado:**
+- `cargo test`:
+  - el bucle con un proveedor guionado: herramienta → respuesta, respaldo ante 429, error claro ante 401, límite de
+    rondas;
+  - la lectura de respuestas de Gemini y Groq;
+  - las herramientas, los roles, la privacidad, las fechas en hora peruana y las citas inventadas;
+  - la configuración de claves.
+  - Además, `ia::tests::con_red_real` con claves reales, en variables de entorno (`--ignored`).
+- e2e contra la app real con un servidor falso compatible con OpenAI (`SIGLO_IA_URL`, solo en compilaciones de
+  desarrollo):
+  - Gemini sin cupo pasa a Groq;
+  - la ficha del libro citado se abre y la cita inventada se borra;
+  - la Dueña recibe ventas y la vendedora no recibe herramientas de dinero;
+  - ningún dato de cliente llega a la IA.
+
 ## Estado de los hitos
 
 | Hito | Contenido | Estado |
@@ -384,7 +445,7 @@ instala permitiendo «orígenes desconocidos» para esa app. Con el teléfono co
 | 5. Reportes | Por período, más vendidos, categorías, ganancia, cuadre de caja, libros sin movimiento, exportar CSV | ✅ |
 | 6. Respaldos y configuración | Respaldo automático y manual con carpeta externa, restaurar, cambiar la contraseña maestra, «olvidé mi PIN» | ✅ |
 | 7. Celular | Servidor LAN (HTTPS), vinculación por QR, guardar libros por ISBN, título leído con la cámara o escrito, app Android inmersiva con «atrás» y deslizar | ✅ |
-| 8. Asistente IA | Gemini + Groq, *function calling* sobre el inventario | Pendiente |
+| 8. Asistente IA | Gemini + Groq, herramientas sobre el inventario, encargos y reportes (dinero solo para la Dueña), fichas de libros, sin datos de clientes | Listo; falta probarlo con claves reales |
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 
 ## Cómo se probó (hitos 1 a 6)

@@ -19,6 +19,7 @@
   import Encargos from './lib/vistas/Encargos.svelte';
   import Reportes from './lib/vistas/Reportes.svelte';
   import Pendiente from './lib/vistas/Pendiente.svelte';
+  import Asistente from './lib/vistas/Asistente.svelte';
   import Vender from './lib/vistas/Vender.svelte';
   import Bienvenida from './lib/acceso/Bienvenida.svelte';
   import Desbloquear from './lib/acceso/Desbloquear.svelte';
@@ -102,6 +103,8 @@
             <Encargos />
           {:else if app.vista === 'reportes'}
             <Reportes />
+          {:else if app.vista === 'asistente'}
+            <Asistente />
           {:else if app.vista === 'ajustes'}
             <Ajustes />
           {:else if app.vista === 'tienda'}
