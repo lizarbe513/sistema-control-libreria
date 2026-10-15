@@ -119,8 +119,9 @@ jobs:
       - name: Compilar el APK
         working-directory: app
         run: |
-          npm install -g @tauri-apps/cli@2
-          tauri android build --apk --target aarch64 --target armv7
+          # Gradle llama por dentro a «cargo tauri»: hace falta la versión de cargo (la de npm no sirve)
+          command -v cargo-tauri || cargo install tauri-cli --version '^2' --locked
+          cargo tauri android build --apk --target aarch64 --target armv7
       - name: Firmar
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
