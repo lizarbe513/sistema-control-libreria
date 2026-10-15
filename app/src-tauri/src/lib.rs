@@ -1,24 +1,74 @@
 //! App de escritorio (Tauri 2) de la Librería SIGLO XXI.
 
+#[cfg(not(target_os = "android"))]
 mod celular;
+#[cfg(not(target_os = "android"))]
 mod comandos;
+#[cfg(not(target_os = "android"))]
 mod encargos;
+#[cfg(not(target_os = "android"))]
 mod estado;
+#[cfg(not(target_os = "android"))]
 mod inventario;
+mod lan_cliente;
+#[cfg(not(target_os = "android"))]
 mod llavero;
+#[cfg(not(target_os = "android"))]
 mod reportes;
+#[cfg(not(target_os = "android"))]
 mod respaldos;
+#[cfg(not(target_os = "android"))]
 mod rpc;
+#[cfg(not(target_os = "android"))]
 mod servidor;
+#[cfg(not(target_os = "android"))]
 mod ventas;
 
+#[cfg(not(target_os = "android"))]
 use std::sync::Mutex;
 
+#[cfg(not(target_os = "android"))]
 use estado::{Estado, Fase};
+#[cfg(not(target_os = "android"))]
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(not(target_os = "android"))]
+    escritorio();
+    #[cfg(target_os = "android")]
+    celular_movil();
+}
+
+/// La app del celular: no tiene base de datos; todo va al PC por el WiFi (ver `lan_cliente`).
+#[cfg(target_os = "android")]
+fn celular_movil() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_barcode_scanner::init())
+        // las portadas se piden al PC por un protocolo propio, fijando su certificado
+        .register_asynchronous_uri_scheme_protocol("lan", |_ctx, request, responder| {
+            let ruta = request.uri().path().to_string();
+            std::thread::spawn(move || {
+                let (estado, tipo, cuerpo) = lan_cliente::portada(&ruta);
+                if let Ok(r) = tauri::http::Response::builder()
+                    .status(estado)
+                    .header("content-type", tipo)
+                    .header("access-control-allow-origin", "*")
+                    .body(cuerpo)
+                {
+                    responder.respond(r);
+                }
+            });
+        })
+        .invoke_handler(tauri::generate_handler![lan_cliente::lan_pedir])
+        .run(tauri::generate_context!())
+        .expect("no se pudo iniciar la app del celular");
+}
+
+/// La app del PC: base cifrada, ventas, encargos y el servidor para los celulares.
+#[cfg(not(target_os = "android"))]
+fn escritorio() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -103,6 +153,7 @@ pub fn run() {
             celular::celulares_activar,
             celular::celulares_codigo,
             celular::celulares_desconectar,
+            lan_cliente::lan_pedir,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar la Librería SIGLO XXI")

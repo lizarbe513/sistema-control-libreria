@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "movil",
+  "description": "Permisos de la app del celular: cámara (lector de códigos) y abrir WhatsApp",
+  "windows": ["main"],
+  "platforms": ["android", "iOS"],
+  "permissions": [
+    "barcode-scanner:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://wa.me/*" }, { "url": "https://api.whatsapp.com/*" }]
+    }
+  ]
+}

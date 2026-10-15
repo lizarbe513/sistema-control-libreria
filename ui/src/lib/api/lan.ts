@@ -161,7 +161,7 @@ export class ApiLan extends ApiTauri {
     const host = c.hosts[0];
     if (enTauri) {
       // la app las pide por un protocolo propio (lan://) que Rust atiende fijando el certificado del PC
-      const datos = btoa(JSON.stringify({ h: c.hosts, p: c.puerto, t: c.token, f: c.huella }));
+      const datos = btoa(JSON.stringify({ h: c.hosts, p: c.puerto, t: c.token, f: c.huella })).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
       const base = /Android|Windows/i.test(navigator.userAgent) ? 'http://lan.localhost' : 'lan://localhost';
       return `${base}/${datos}/${archivo}`;
     }
