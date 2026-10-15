@@ -49,16 +49,28 @@ jobs:
           echo "VERSION=$version" >> "$GITHUB_ENV"
           ls -la salida
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instalador-${{ env.VERSION }}
+          path: salida/*
+          if-no-files-found: error
+
       # Instalar de verdad, abrir la app y comprobar que sigue viva
       - name: Prueba de humo
         shell: pwsh
         run: |
           $setup = Get-ChildItem salida\*-setup.exe | Select-Object -First 1
-          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
-          $carpeta = Join-Path $env:LOCALAPPDATA 'Programs'
-          $app = Get-ChildItem $carpeta -Recurse -Filter '*.exe' |
-            Where-Object { $_.Name -notmatch 'unins|uninstall' -and $_.DirectoryName -match 'SIGLO' } | Select-Object -First 1
-          if (-not $app) { Get-ChildItem $carpeta -Recurse | Select-Object -First 30 | Out-Host; throw 'No se encontró la app instalada' }
+          $inst = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait -PassThru
+          Write-Host "Instalador terminó con código $($inst.ExitCode)"
+          # dónde quedó: se busca el programa en las carpetas de instalación de este usuario y del equipo
+          $raices = @($env:LOCALAPPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ -and (Test-Path $_) }
+          $app = $raices | ForEach-Object { Get-ChildItem $_ -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue } |
+            Where-Object { $_.Name -match 'libreria|SIGLO' -and $_.Name -notmatch 'unins|uninstall|setup' } | Select-Object -First 1
+          if (-not $app) {
+            Get-ChildItem $env:LOCALAPPDATA -Directory | Out-Host
+            Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Select-Object DisplayName, InstallLocation | Out-Host
+            throw 'No se encontró la app instalada'
+          }
           Write-Host "Instalada en $($app.FullName)"
           $p = Start-Process -FilePath $app.FullName -PassThru
           Start-Sleep -Seconds 25
@@ -66,9 +78,3 @@ jobs:
           if ($p.HasExited) { throw "La app se cerró sola (código $($p.ExitCode))" }
           Write-Host "La app sigue abierta (PID $($p.Id)); ventana: '$($p.MainWindowTitle)'"
           Stop-Process -Id $p.Id -Force
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: instalador-${{ env.VERSION }}
-          path: salida/*
-          if-no-files-found: error
