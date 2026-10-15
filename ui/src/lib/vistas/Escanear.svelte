@@ -1,7 +1,9 @@
 <script lang="ts">
-  // Escaneo continuo de ISBN con la cámara del celular: escanear → si ya está, sumar stock; si es nuevo, completar los
-  // datos y guardarlo → siguiente. Pensado para cargar el inventario recorriendo los estantes: la ubicación elegida se
-  // recuerda para el siguiente libro. Los libros sin código de barras se registran con una foto de la portada.
+  // Guardar libros desde el celular, de tres formas:
+  //  · ISBN: escaneo continuo del código de barras → si ya está, sumar stock; si es nuevo, completar y guardar.
+  //  · Título: la cámara lee el título de la portada (en el teléfono) → búsqueda en internet → completar y guardar.
+  //  · A mano: se escribe el título → búsqueda en internet (o sin buscar) → completar y guardar.
+  // La portada sale de internet. La ubicación elegida se recuerda para el siguiente: lo normal es recorrer un estante.
   import { onDestroy, onMount } from 'svelte';
   import { normalizarIsbn } from '../api/demo';
   import { api, type ResultadoLinea, type Sugerencia, type UbicacionApi } from '../api';
@@ -9,21 +11,28 @@
   import { app, avisar } from '../estado.svelte';
   import { revisarLlegada } from '../encargos.svelte';
   import { aCentimos, inventario, inventarioCambio, vista } from '../inventario.svelte';
-  import { avisarLectura, cancelarLectura, hayCamara, leer, permisoCamara } from '../escaner';
-  import { tomarFoto } from '../foto';
+  import { adivinarTitulo, avisarLectura, cancelarLectura, hayCamara, leer, leerTexto, permisoCamara, type LineaLeida } from '../escaner';
   import { alAtras } from '../atras.svelte';
   import { miniatura } from '../portada';
+  import { registro, type ModoRegistro } from '../registro.svelte';
   import { esDuena } from '../sesion.svelte';
   import BuscadorLinea from '../componentes/BuscadorLinea.svelte';
   import SelectorUbicacion from '../componentes/SelectorUbicacion.svelte';
 
-  type Fase = 'apuntando' | 'buscando' | 'existente' | 'nuevo' | 'sinCodigo';
+  type Fase = 'apuntando' | 'buscando' | 'titulo' | 'mano' | 'existente' | 'nuevo';
+  const MODOS: { id: ModoRegistro; nombre: string; emoji: string }[] = [
+    { id: 'isbn', nombre: 'ISBN', emoji: '📷' },
+    { id: 'titulo', nombre: 'Título', emoji: '🔤' },
+    { id: 'mano', nombre: 'A mano', emoji: '✍️' },
+  ];
+  const modos = MODOS.filter((m) => m.id !== 'titulo' || hayCamara);
+
   let fase = $state<Fase>('apuntando');
   let mensaje = $state('');
   let activo = true;
   let manual = $state('');
 
-  // lo escaneado en esta tanda
+  // lo guardado en esta tanda
   let titulos = $state(new Set<number>());
   let ejemplares = $state(0);
 
@@ -43,10 +52,15 @@
   let stock = $state('1');
   let categoria = $state('literarias');
   let guardando = $state(false);
-  /** Foto tomada con el celular (data-URL): sirve de portada si internet no trae una. */
-  let foto = $state<string | null>(null);
 
-  // la ubicación se recuerda entre libros (y entre tandas): lo normal es escanear un estante entero
+  // lectura del título con la cámara
+  let leyendo = $state(false);
+  let lineas = $state<LineaLeida[]>([]);
+  /** Lo que se busca en internet; cambiarlo vuelve a crear el buscador con esos datos. */
+  let consulta = $state({ titulo: '', autor: '', vez: 0 });
+  let destino = $state<'titulo' | 'autor'>('titulo');
+
+  // la ubicación se recuerda entre libros (y entre tandas)
   const CLAVE_UBICACION = 'escaneo-ubicacion';
   let ubicacion = $state<UbicacionApi | null>(leerUbicacion());
   function leerUbicacion(): UbicacionApi | null {
@@ -65,25 +79,54 @@
     }
   }
 
-  onMount(() => void ciclo());
+  onMount(() => empezar());
   onDestroy(() => {
     activo = false;
     document.documentElement.classList.remove('camara');
     void cancelarLectura();
   });
 
-  // el fondo se vuelve transparente solo mientras la cámara mira
+  // el fondo se vuelve transparente solo mientras la cámara busca el código de barras
   $effect(() => {
     document.documentElement.classList.toggle('camara', hayCamara && fase === 'apuntando');
   });
 
-  // «atrás» con un libro a la vista vuelve a apuntar (sin salir del escáner)
+  // «atrás» con un libro a la vista vuelve al inicio del modo (sin salir)
   $effect(() => {
-    if (fase === 'existente' || fase === 'nuevo' || fase === 'sinCodigo') return alAtras(siguiente);
+    if (fase === 'existente' || fase === 'nuevo') return alAtras(siguiente);
   });
 
-  /** Escucha la cámara hasta que lee un código; lo procesa y espera a que se pida el siguiente. */
+  /** Arranca el modo elegido desde cero. */
+  function empezar() {
+    existente = null;
+    sug = null;
+    mensaje = '';
+    lineas = [];
+    if (registro.modo === 'isbn') {
+      fase = 'apuntando';
+      void ciclo();
+    } else if (registro.modo === 'titulo') {
+      fase = 'titulo';
+      consulta = { titulo: '', autor: '', vez: consulta.vez + 1 };
+      void leerTitulo();
+    } else {
+      fase = 'mano';
+      consulta = { titulo: '', autor: '', vez: consulta.vez + 1 };
+    }
+  }
+
+  async function cambiarModo(m: ModoRegistro) {
+    if (m === registro.modo && (fase === 'apuntando' || fase === registro.modo)) return;
+    registro.modo = m;
+    await cancelarLectura();
+    empezar();
+  }
+
+  const siguiente = empezar;
+
+  // ── ISBN ──
   let vuelta = 0;
+  /** Escucha la cámara hasta que lee un código; lo procesa y espera a que se pida el siguiente. */
   async function ciclo() {
     if (!hayCamara) return;
     const mia = ++vuelta; // un ciclo viejo (cancelado) no debe seguir leyendo junto al nuevo
@@ -109,6 +152,16 @@
   async function existentePorIsbn(n: string): Promise<Libro | null> {
     const lista = await api.buscarLibros(n, { limite: 5 });
     const l = lista.find((x) => x.isbn === n);
+    return l ? vista(l) : null;
+  }
+
+  const plano = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+  /** Sin ISBN: ¿ya hay un libro con el mismo título (y autor, si se sabe)? */
+  async function existentePorTitulo(t: string, a: string): Promise<Libro | null> {
+    if (!t.trim()) return null;
+    const lista = await api.buscarLibros(t, { limite: 10 });
+    const l = lista.find((x) => plano(x.titulo) === plano(t) && (!a || !x.autor || plano(x.autor) === plano(a)));
     return l ? vista(l) : null;
   }
 
@@ -139,59 +192,60 @@
     }
   }
 
-  function llenarNuevo(n: string, s: Sugerencia | null) {
+  function llenarNuevo(n: string, s: Sugerencia | null, t = '', a = '') {
     isbn = n;
     sug = s;
-    titulo = s?.titulo ?? '';
-    autor = s?.autor ?? '';
+    titulo = s?.titulo ?? t;
+    autor = s?.autor ?? a;
     editorial = s?.editorial ?? '';
     precio = costo = '';
     stock = '1';
     fase = 'nuevo';
   }
 
-  function siguiente() {
-    existente = null;
-    sug = null;
-    foto = null;
+  // ── título leído con la cámara ──
+  async function leerTitulo() {
+    if (leyendo) return;
+    leyendo = true;
     mensaje = '';
-    fase = 'apuntando';
-    void ciclo();
-  }
-
-  // ── libros sin código de barras: foto de la portada → búsqueda por título ──
-  async function sinCodigo() {
-    fase = 'sinCodigo';
-    sug = null;
-    await cancelarLectura();
-    await fotografiar();
-  }
-
-  async function fotografiar() {
     try {
-      const f = await tomarFoto();
-      if (f) foto = f;
+      const r = await leerTexto();
+      if (!r) return; // canceló la foto
+      if (!r.length) {
+        avisarLectura(false);
+        mensaje = 'No pude leer texto en esa foto. Acércate a la portada, con buena luz, y prueba otra vez.';
+        return;
+      }
+      avisarLectura();
+      lineas = [...r].sort((a, b) => b.alto - a.alto).slice(0, 12);
+      destino = 'titulo';
+      consulta = { titulo: adivinarTitulo(r), autor: '', vez: consulta.vez + 1 };
     } catch (e) {
-      avisar((e as Error).message);
+      mensaje = (e as Error).message;
+    } finally {
+      leyendo = false;
     }
+  }
+
+  /** Tocar una línea leída la pone como título o como autor, y busca de nuevo. */
+  function usarLinea(texto: string) {
+    const t = texto.trim();
+    consulta = destino === 'titulo' ? { ...consulta, titulo: t, vez: consulta.vez + 1 } : { ...consulta, autor: t, vez: consulta.vez + 1 };
+    if (destino === 'titulo') destino = 'autor';
   }
 
   async function elegirEnLinea(r: ResultadoLinea) {
     const n = r.isbn ? normalizarIsbn(r.isbn) : null;
-    if (n) {
-      const l = await existentePorIsbn(n).catch(() => null);
-      if (l) return mostrarExistente(l);
-    }
+    const ya = await (n ? existentePorIsbn(n) : existentePorTitulo(r.titulo, r.autor)).catch(() => null);
+    if (ya) return mostrarExistente(ya);
     llenarNuevo(n ?? '', { isbn: n ?? '', titulo: r.titulo, autor: r.autor, editorial: r.editorial, anio: r.anio, sinopsis: '', portadaUrl: r.portadaUrl, fuente: r.fuente });
   }
 
-  /** La portada que se verá: la de internet o, si no hay, la foto. */
-  const portadaNueva = $derived(sug?.portadaUrl ?? foto);
-
+  // ── libro que ya estaba ──
   async function sumar(n: number) {
     if (!existente || !Number.isInteger(n) || n < 1) return void avisar('Escribe cuántos ejemplares llegaron (1 o más)');
     try {
-      const l = await api.ajustarStock(existente.id, n, 'ingreso', 'Escaneado con el celular');
+      const l = await api.ajustarStock(existente.id, n, 'ingreso', 'Registrado con el celular');
       existente = vista(l);
       contar(l.id, n);
       avisar(`+${n} · ahora ${l.stock} ✓`);
@@ -239,20 +293,7 @@
     }
   }
 
-  async function fotoComoPortada() {
-    const l = existente;
-    if (!l) return;
-    const f = await tomarFoto().catch(() => null);
-    if (!f) return;
-    try {
-      existente = vista(await api.portadaDesdeArchivo(l.id, f));
-      inventarioCambio();
-      avisar('Portada cambiada 📸');
-    } catch (e) {
-      avisar((e as Error).message);
-    }
-  }
-
+  // ── libro nuevo ──
   async function guardar(e: SubmitEvent) {
     e.preventDefault();
     const p = aCentimos(precio);
@@ -277,11 +318,12 @@
         ubicacion: $state.snapshot(ubicacion),
       });
       // la portada va aparte: si falla, el libro igual queda guardado
-      try {
-        if (sug?.portadaUrl) l = await api.portadaDesdeUrl(l.id, sug.portadaUrl);
-        else if (foto) l = await api.portadaDesdeArchivo(l.id, foto);
-      } catch (x) {
-        avisar(`El libro se guardó, pero la portada no: ${(x as Error).message}`);
+      if (sug?.portadaUrl) {
+        try {
+          l = await api.portadaDesdeUrl(l.id, sug.portadaUrl);
+        } catch (x) {
+          avisar(`El libro se guardó, pero la portada no: ${(x as Error).message}`);
+        }
       }
       contar(l.id, n);
       avisar(`«${l.titulo}» agregado 📚`);
@@ -295,16 +337,24 @@
   }
 
   function cerrar() {
-    app.vista = 'inicio';
+    app.vista = 'nuevo';
   }
 </script>
 
 <div class="escaner" class:con-camara={hayCamara && fase === 'apuntando'} data-vacio>
   <header>
-    <strong>📷 Escanear libros</strong>
+    <strong>Guardar libros</strong>
     <span class="cuenta" data-testid="cuenta-escaneo">{titulos.size} {titulos.size === 1 ? 'título' : 'títulos'} · {ejemplares} {ejemplares === 1 ? 'ejemplar' : 'ejemplares'}</span>
     <button class="cerrar" onclick={cerrar} aria-label="Cerrar el escáner">✕</button>
   </header>
+
+  {#if fase !== 'existente' && fase !== 'nuevo'}
+    <div class="modos" role="tablist" aria-label="Cómo registrar">
+      {#each modos as m (m.id)}
+        <button role="tab" aria-selected={registro.modo === m.id} class:activo={registro.modo === m.id} onclick={() => cambiarModo(m.id)}>{m.emoji} {m.nombre}</button>
+      {/each}
+    </div>
+  {/if}
 
   {#if hayCamara && fase === 'apuntando'}
     <div class="visor" aria-hidden="true"><span class="marco"></span></div>
@@ -318,9 +368,38 @@
         <input bind:value={manual} inputmode="numeric" placeholder="ISBN (978…)" aria-label="ISBN a mano" disabled={fase === 'buscando'} />
         <button class="btn btn-suave" disabled={fase === 'buscando' || !manual.trim()}>Buscar</button>
       </form>
-      <div class="pie">
-        <button class="btn btn-blanco" onclick={sinCodigo} disabled={fase === 'buscando'} data-testid="sin-codigo">📸 Sin código de barras</button>
-        <span class="lugar" data-testid="lugar-escaneo">📍 {ubicacion ? 'Ubicación elegida para los nuevos' : 'Nuevos sin ubicación'}</span>
+      <span class="lugar" data-testid="lugar-escaneo">📍 {ubicacion ? 'Ubicación elegida para los nuevos' : 'Nuevos sin ubicación'}</span>
+    {:else if fase === 'titulo' || fase === 'mano'}
+      <div class="por-titulo" data-testid="registro-{fase}">
+        {#if fase === 'titulo'}
+          <button class="btn btn-primario grande" onclick={leerTitulo} disabled={leyendo} data-testid="leer-titulo">
+            {leyendo ? 'Leyendo…' : lineas.length ? '🔤 Leer otra portada' : '🔤 Leer el título de la portada'}
+          </button>
+          {#if mensaje}<p class="aviso" role="alert">{mensaje}</p>{/if}
+          {#if lineas.length}
+            <div class="leido">
+              <div class="destino">
+                <small>Toca lo leído para ponerlo en:</small>
+                <button class:activo={destino === 'titulo'} onclick={() => (destino = 'titulo')}>Título</button>
+                <button class:activo={destino === 'autor'} onclick={() => (destino = 'autor')}>Autor</button>
+              </div>
+              <div class="lineas" data-sin-deslizar>
+                {#each lineas as l, i (i)}<button class="linea" onclick={() => usarLinea(l.texto)}>{l.texto}</button>{/each}
+              </div>
+            </div>
+          {:else if !leyendo}
+            <p class="atenuado ayuda">Apunta a la portada con buena luz. Se lee el texto en el mismo teléfono y se busca el libro en internet, con su portada.</p>
+          {/if}
+        {:else}
+          <p class="guia">Escribe el título (y el autor si lo sabes) y búscalo en internet: trae los datos y la portada.</p>
+        {/if}
+        {#if fase === 'mano' || lineas.length}
+          {#key consulta.vez}
+            <BuscadorLinea onElegir={elegirEnLinea} tituloInicial={consulta.titulo} autorInicial={consulta.autor} buscarAlAbrir={!!consulta.titulo} columna />
+          {/key}
+        {/if}
+        <button type="button" class="enlace" onclick={() => llenarNuevo('', null, consulta.titulo, consulta.autor)} data-testid="llenar-a-mano">No lo encuentro: llenar los datos a mano</button>
+        <span class="lugar">📍 {ubicacion ? 'Ubicación elegida para los nuevos' : 'Nuevos sin ubicación'}</span>
       </div>
     {:else if fase === 'existente' && existente}
       <div class="libro" data-testid="escaneo-existente">
@@ -341,35 +420,12 @@
       {#if moviendo}
         <SelectorUbicacion valor={existente.ubicacion} onCambio={mover} />
       {/if}
-      <div class="extras">
-        <button class="btn btn-blanco" onclick={() => (moviendo = !moviendo)} data-testid="mover-libro">📍 {moviendo ? 'Listo' : existente.ubicacion ? 'Cambiar ubicación' : 'Ponerle ubicación'}</button>
-        <button class="btn btn-blanco" onclick={fotoComoPortada}>📸 Foto como portada</button>
-      </div>
-      <div class="acciones"><button class="btn btn-primario grande" onclick={siguiente}>Siguiente libro 📷</button></div>
-    {:else if fase === 'sinCodigo'}
-      <div class="sin-codigo" data-testid="escaneo-sin-codigo">
-        <div class="cab">
-          {#if foto}<img src={foto} alt="Foto de la portada" data-testid="foto-portada" />{:else}<span class="hueco">📸</span>{/if}
-          <div class="datos">
-            <span class="etiqueta nuevo">Sin código de barras</span>
-            <small class="atenuado">Escribe el título que ves en la portada y búscalo en internet. La foto queda como portada si internet no trae una.</small>
-          </div>
-        </div>
-        <div class="extras">
-          <button class="btn btn-blanco" onclick={fotografiar}>{foto ? '📸 Otra foto' : '📸 Tomar la foto'}</button>
-          <button class="btn btn-blanco" disabled title="Llega con el asistente (Hito 8)">✨ Leer la portada (IA)</button>
-        </div>
-        <small class="atenuado nota">«Leer la portada» llega con el asistente (Hito 8).</small>
-        <BuscadorLinea onElegir={elegirEnLinea} />
-        <div class="acciones">
-          <button type="button" class="btn btn-blanco" onclick={siguiente}>Volver</button>
-          <button type="button" class="btn btn-suave" onclick={() => llenarNuevo('', null)}>Llenar a mano</button>
-        </div>
-      </div>
+      <button class="btn btn-blanco" onclick={() => (moviendo = !moviendo)} data-testid="mover-libro">📍 {moviendo ? 'Listo' : existente.ubicacion ? 'Cambiar ubicación' : 'Ponerle ubicación'}</button>
+      <div class="acciones"><button class="btn btn-primario grande" onclick={siguiente}>Siguiente libro</button></div>
     {:else if fase === 'nuevo'}
       <form class="nuevo" onsubmit={guardar} data-testid="escaneo-nuevo">
         <div class="cab">
-          {#if portadaNueva}<img src={portadaNueva} alt="" />{/if}
+          {#if sug?.portadaUrl}<img src={sug.portadaUrl} alt="" />{/if}
           <div>
             <span class="etiqueta nuevo">Libro nuevo · {isbn || 'sin ISBN'}</span>
             {#if !sug}<small class="atenuado">{isbn ? 'No encontré datos en internet: escríbelos a mano.' : 'Escribe los datos a mano.'}</small>{/if}
@@ -390,9 +446,6 @@
           <span>Ubicación <small class="atenuado">(se recuerda para el siguiente)</small></span>
           <SelectorUbicacion valor={ubicacion} onCambio={fijarUbicacion} mapa={false} />
         </div>
-        {#if !sug?.portadaUrl}
-          <button type="button" class="btn btn-blanco" onclick={fotografiar}>{foto ? '📸 Otra foto de portada' : '📸 Foto como portada'}</button>
-        {/if}
         <div class="acciones">
           <button type="button" class="btn btn-blanco" onclick={siguiente}>Omitir</button>
           <button class="btn btn-primario" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar y siguiente'}</button>
@@ -589,49 +642,10 @@
     grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
     gap: 8px;
   }
-  .pie,
-  .extras {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  .pie {
-    justify-content: space-between;
-  }
   .lugar {
     font-size: 12px;
     font-weight: 700;
     color: var(--muted);
-  }
-  .extras .btn {
-    flex: 1;
-  }
-  .extras .btn:disabled {
-    opacity: 0.45;
-    filter: grayscale(0.6);
-  }
-  .sin-codigo {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .sin-codigo :global(form) {
-    grid-template-columns: 1fr;
-  }
-  .hueco {
-    width: 54px;
-    height: 80px;
-    display: grid;
-    place-items: center;
-    border-radius: 6px;
-    background: var(--surface-2);
-    font-size: 22px;
-    flex-shrink: 0;
-  }
-  .nota {
-    margin-top: -4px;
-    font-size: 11px;
   }
   .campo {
     display: flex;
@@ -639,6 +653,84 @@
     gap: 4px;
     font-size: 12px;
     font-weight: 800;
+  }
+  .modos {
+    display: flex;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--surface);
+  }
+  .modos button {
+    flex: 1;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--surface-2);
+    font-weight: 800;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .modos button.activo {
+    background: var(--primary);
+    color: var(--on-primary);
+  }
+  .por-titulo {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .ayuda {
+    margin: 0;
+    font-size: 13px;
+    text-align: center;
+  }
+  .leido {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .destino {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .destino small {
+    flex: 1;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .destino button {
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    font-weight: 800;
+    font-size: 12px;
+  }
+  .destino button.activo {
+    background: var(--primary-soft);
+    color: var(--primary-strong);
+  }
+  .lineas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .linea {
+    padding: 6px 12px;
+    border-radius: 12px;
+    border: 1.5px solid var(--linea);
+    background: var(--surface);
+    font-weight: 700;
+    font-size: 13px;
+    text-align: left;
+  }
+  .enlace {
+    align-self: center;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--primary-strong);
+    text-decoration: underline;
   }
   .grande {
     height: 50px;

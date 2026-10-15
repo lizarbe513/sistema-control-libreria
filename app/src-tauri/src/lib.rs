@@ -40,12 +40,24 @@ pub fn run() {
     celular_movil();
 }
 
+/// Plugin propio del celular: lee el texto de una foto con ML Kit (`gen/android/.../OcrPlugin.kt`).
+#[cfg(target_os = "android")]
+fn ocr<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new("ocr")
+        .setup(|_app, api| {
+            api.register_android_plugin("pe.sigloxxi.libreria", "OcrPlugin")?;
+            Ok(())
+        })
+        .build()
+}
+
 /// La app del celular: no tiene base de datos; todo va al PC por el WiFi (ver `lan_cliente`).
 #[cfg(target_os = "android")]
 fn celular_movil() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_barcode_scanner::init())
+        .plugin(ocr())
         // las portadas se piden al PC por un protocolo propio, fijando su certificado
         .register_asynchronous_uri_scheme_protocol("lan", |_ctx, request, responder| {
             let ruta = request.uri().path().to_string();
@@ -106,7 +118,6 @@ fn escritorio() {
             inventario::portada_desde_url,
             inventario::portada_desde_archivo,
             inventario::portada_quitar,
-            inventario::portada_desde_datos,
             inventario::ruta_portadas,
             inventario::tienda_cargar,
             inventario::tienda_guardar,

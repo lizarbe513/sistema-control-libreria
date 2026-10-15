@@ -62,7 +62,6 @@ fn sincronas(app: &AppHandle, cmd: &str, args: Value) -> Res<Value> {
         "stock_ajustar" => inventario::stock_ajustar { id: i64, delta: i64, motivo: String, nota: Option<String> },
         "inventario_resumen" => inventario::inventario_resumen {},
         "portada_quitar" => inventario::portada_quitar { id: i64 },
-        "portada_desde_datos" => inventario::portada_desde_datos { id: i64, datos: String },
         "tienda_cargar" => inventario::tienda_cargar {},
         "plantillas_listar" => inventario::plantillas_listar {},
         "permiso_vendedores_editan" => inventario::permiso_vendedores_editan { valor: Option<bool> },

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "movil",
-  "description": "Permisos de la app del celular: cámara (lector de códigos), botón «atrás» y salir, y abrir WhatsApp",
+  "description": "Permisos de la app del celular: cámara (lector de códigos y lectura de títulos), botón «atrás» y salir, y abrir WhatsApp",
   "windows": [
     "main"
   ],
@@ -13,6 +13,7 @@
     "core:default",
     "core:app:allow-exit",
     "barcode-scanner:default",
+    "ocr:allow-reconocer",
     {
       "identifier": "opener:allow-open-url",
       "allow": [

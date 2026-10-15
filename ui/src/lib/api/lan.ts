@@ -217,9 +217,4 @@ export class ApiLan extends ApiTauri {
     }
     return { encargo, url };
   }
-
-  /** En el celular la foto viaja como data-URL (el PC no puede leer una ruta del teléfono). */
-  override portadaDesdeArchivo(id: number, origen: string) {
-    return this.llamar<import('./tipos').LibroApi>('portada_desde_datos', { id, datos: origen });
-  }
 }

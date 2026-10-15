@@ -298,18 +298,26 @@ cuántos títulos y ejemplares van en la tanda. Sin cámara (o sin permiso) se p
   2. luego vuelve al panel anterior;
   3. en Inicio pide tocar dos veces para salir.
   - En el navegador de pruebas queda como `window.__atras`.
-- **Deslizar entre paneles** (Inicio · Buscar · Venta · Encargos · Más): gesto horizontal rápido de más de 70 px. No se
+- **Deslizar entre paneles** (Inicio · Buscar · «+» · Encargos · Más): gesto horizontal rápido de más de 70 px. No se
   activa sobre campos, el 3D, filas con desplazamiento (`data-sin-deslizar`) ni con una capa abierta.
-- **Menú «Más»** (`vistas/Mas.svelte`): Escanear, Libros, Clientes, Reportes (Dueña) y Ajustes.
-- **Escaneo:**
+- **Menú «Más»** (`vistas/Mas.svelte`): Libros, Clientes, Reportes (Dueña) y Ajustes.
+- **Panel «+» (`vistas/Nuevo.svelte`):** guardar libros es lo principal del celular. Tres tarjetas grandes:
+  - **Escanear el ISBN:** escaneo continuo del código de barras;
+  - **Leer el título:** la cámara toma la portada y **el mismo teléfono lee el texto** con ML Kit (plugin propio
+    `OcrPlugin.kt`, registrado con `register_android_plugin`; sin internet). Las letras más grandes se proponen como título,
+    se buscan en internet y las demás líneas leídas se pueden tocar para usarlas como título o autor. La foto no se guarda;
+  - **Escribir el título:** búsqueda en internet por título y autor, o llenar los datos a mano.
+
+  Debajo queda «Nueva venta». Dentro de «Guardar libros» se cambia de forma con las pestañas ISBN · Título · A mano.
+  Después de guardar, se sigue en la misma forma.
+- **Detalles al guardar libros:**
+  - **Portada:** sale de internet.
   - **Ubicación:** los libros nuevos llevan la ubicación elegida (`componentes/SelectorUbicacion.svelte`), que se recuerda
     para el siguiente. A uno que ya estaba se le cambia la ubicación, guardando su ficha completa; el PC conserva el costo
-    si quien escanea no lo ve.
-  - **Foto como portada:** `lib/foto.ts` usa `<input capture>`, reduce la foto a 1600 px en JPEG y la sube con la nueva
-    orden `portada_desde_datos`.
-  - **Sin código de barras:** foto de la portada → búsqueda en internet por título y autor → formulario. La foto queda como
-    portada si internet no trae una. El botón «Leer la portada (IA)» queda listo para el Hito 8.
-  - **Al leer un código:** vibración corta y un «bip» (Web Audio). Se apagan en Ajustes → «Este celular».
+    si quien registra no lo ve.
+  - **Sin duplicados:** si el libro elegido en internet ya está (por ISBN o, sin ISBN, por título y autor), aparece
+    «Ya lo tienes» para sumar stock.
+  - **Al leer un código o un título:** vibración corta y un «bip» (Web Audio). Se apagan en Ajustes → «Este celular».
 - **Buscar → 📷:** lee el ISBN y abre la ficha con la ubicación. Si el libro no está, ofrece «¿Lo encargamos?» con los datos
   de internet.
 - **Si el router le cambia la IP al PC:** cuando ninguna dirección responde, el celular recorre su red /24 (`lan_descubrir`)
@@ -318,9 +326,10 @@ cuántos títulos y ejemplares van en la tanda. Sin cámara (o sin permiso) se p
 **Estado:** probado.
 - `cargo test`: sesiones, tokens, huella, descubrimiento, portada en base64.
 - e2e con la app real y un navegador con pantalla de celular (vincular, PIN, deslizar, «atrás», menú «Más», escaneo con
-  ubicación recordada y cambiada, foto como portada, libro sin ISBN, ficha, vender, desconectar).
-- El APK se instaló en un teléfono real y se vinculó por código. Falta que la tienda confirme la cámara (ISBN, portada,
-  ficha) en el teléfono.
+  ubicación recordada y cambiada, panel «+», búsqueda por título con portada, sin duplicados, libro a mano, ficha,
+  vender, desconectar). La lectura del título con ML Kit solo se puede probar en el teléfono.
+- El APK se instaló en un teléfono real y se vinculó por código. Falta que la tienda confirme la cámara (ISBN, lectura del
+  título, ficha) en el teléfono.
 
 ### Compilar e instalar el APK (sin cable)
 
@@ -349,8 +358,8 @@ instala permitiendo «orígenes desconocidos» para esa app. Con el teléfono co
 | 4. Encargos y clientes | Fichas con historial, tablero por estados, adelanto, aviso por WhatsApp, carta al ingresar stock, entrega desde Vender | ✅ |
 | 5. Reportes | Por período, más vendidos, categorías, ganancia, cuadre de caja, libros sin movimiento, exportar CSV | ✅ |
 | 6. Respaldos y configuración | Respaldo automático y manual con carpeta externa, restaurar, cambiar la contraseña maestra, «olvidé mi PIN» | ✅ |
-| 7. Celular | Servidor LAN (HTTPS), vinculación por QR, escaneo de ISBN con ubicación y foto, app Android inmersiva con «atrás» y deslizar | En curso: APK instalado y vinculado; falta confirmar la cámara en el teléfono |
-| 8. Asistente IA | Gemini + Groq, *function calling* sobre el inventario, leer la portada de un libro sin ISBN | Pendiente |
+| 7. Celular | Servidor LAN (HTTPS), vinculación por QR, guardar libros por ISBN, título leído con la cámara o escrito, app Android inmersiva con «atrás» y deslizar | En curso: APK instalado y vinculado; falta confirmar la cámara en el teléfono |
+| 8. Asistente IA | Gemini + Groq, *function calling* sobre el inventario | Pendiente |
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 
 ## Cómo se probó (hitos 1 a 6)

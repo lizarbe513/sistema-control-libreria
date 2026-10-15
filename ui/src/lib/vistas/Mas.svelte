@@ -1,12 +1,11 @@
 <script lang="ts">
-  // Celular: lo que no cabe en la barra inferior (Libros, Reportes, Clientes, Escanear, Ajustes).
+  // Celular: lo que no cabe en la barra inferior (Libros, Reportes, Clientes, Ajustes).
   import Icono, { type NombreIcono } from '../componentes/Icono.svelte';
   import { app, type Vista } from '../estado.svelte';
   import { encargosUI } from '../encargos.svelte';
   import { esDuena } from '../sesion.svelte';
 
   const tarjetas = $derived<{ vista: Vista; nombre: string; detalle: string; icono: NombreIcono; antes?: () => void }[]>([
-    { vista: 'escanear', nombre: 'Escanear libros', detalle: 'Cargar el inventario con la cámara', icono: 'camara' },
     { vista: 'libros', nombre: 'Libros', detalle: 'Todo el inventario, stock y edición', icono: 'libro' },
     { vista: 'encargos', nombre: 'Clientes', detalle: 'Fichas, compras y encargos', icono: 'usuario', antes: () => (encargosUI.pestana = 'clientes') },
     ...(esDuena() ? [{ vista: 'reportes' as Vista, nombre: 'Reportes', detalle: 'Ventas, caja y lo más vendido', icono: 'reportes' as NombreIcono }] : []),

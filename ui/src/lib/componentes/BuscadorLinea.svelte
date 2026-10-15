@@ -1,11 +1,29 @@
 <script lang="ts">
   // Busca un libro conocido en internet por título o autor y deja elegir el exacto (con su portada).
+  import { onMount, untrack } from 'svelte';
   import { api, type ResultadoLinea } from '../api';
 
-  let { onElegir }: { onElegir: (r: ResultadoLinea) => void } = $props();
+  let {
+    onElegir,
+    tituloInicial = '',
+    autorInicial = '',
+    buscarAlAbrir = false,
+    columna = false,
+  }: {
+    onElegir: (r: ResultadoLinea) => void;
+    tituloInicial?: string;
+    autorInicial?: string;
+    /** Busca en cuanto aparece (por ejemplo, con el título leído por la cámara). */
+    buscarAlAbrir?: boolean;
+    /** Campos uno debajo del otro (pantalla angosta). */
+    columna?: boolean;
+  } = $props();
 
-  let titulo = $state('');
-  let autor = $state('');
+  let titulo = $state(untrack(() => tituloInicial));
+  let autor = $state(untrack(() => autorInicial));
+  onMount(() => {
+    if (buscarAlAbrir) void buscar();
+  });
   let buscando = $state(false);
   let resultados = $state<ResultadoLinea[] | null>(null);
   let error = $state('');
@@ -29,7 +47,7 @@
   }
 </script>
 
-<section class="buscador">
+<section class="buscador" class:columna>
   <form onsubmit={buscar}>
     <label class="campo">Título <input bind:value={titulo} placeholder="Ej.: el principito" autocomplete="off" /></label>
     <label class="campo">Autor <input bind:value={autor} placeholder="Ej.: saint-exupéry (opcional)" autocomplete="off" /></label>
@@ -76,6 +94,9 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
     gap: 8px;
     align-items: end;
+  }
+  .columna form {
+    grid-template-columns: 1fr;
   }
   .campo {
     display: flex;

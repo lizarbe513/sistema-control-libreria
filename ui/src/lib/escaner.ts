@@ -40,6 +40,36 @@ export async function cancelarLectura() {
   }
 }
 
+// ── leer el título de la portada: foto → reconocimiento de texto en el teléfono (ML Kit, OcrPlugin.kt) ──
+export interface LineaLeida {
+  texto: string;
+  /** Altura de las letras en píxeles: las más grandes suelen ser el título. */
+  alto: number;
+  y: number;
+}
+
+/** Abre la cámara, lee el texto de la foto y devuelve sus líneas (null si se canceló la foto). */
+export async function leerTexto(): Promise<LineaLeida[] | null> {
+  if (!hayCamara) return null;
+  const { tomarFoto } = await import('./foto');
+  const imagen = await tomarFoto();
+  if (!imagen) return null;
+  const { invoke } = await import('@tauri-apps/api/core');
+  const r = await invoke<{ lineas: LineaLeida[] }>('plugin:ocr|reconocer', { imagen });
+  return r.lineas.filter((l) => l.texto.trim().length > 1);
+}
+
+/** El título probable: las líneas con letras casi tan grandes como las mayores, en orden de lectura. */
+export function adivinarTitulo(lineas: LineaLeida[]): string {
+  if (!lineas.length) return '';
+  const mayor = Math.max(...lineas.map((l) => l.alto));
+  return lineas
+    .filter((l) => l.alto >= mayor * 0.75)
+    .sort((a, b) => a.y - b.y)
+    .map((l) => l.texto.trim())
+    .join(' ');
+}
+
 // ── aviso al leer un código: vibración corta y un «bip» suave (se puede apagar en Ajustes) ──
 const CLAVE_AVISO = 'escaneo-aviso';
 

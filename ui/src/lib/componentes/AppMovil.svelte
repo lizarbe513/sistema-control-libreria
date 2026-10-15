@@ -11,6 +11,8 @@
   import Mas from '../vistas/Mas.svelte';
   import Pendiente from '../vistas/Pendiente.svelte';
   import Escanear from '../vistas/Escanear.svelte';
+  import Nuevo from '../vistas/Nuevo.svelte';
+  import { registrar } from '../registro.svelte';
   import Vender from '../vistas/Vender.svelte';
   import Encargos from '../vistas/Encargos.svelte';
   import Reportes from '../vistas/Reportes.svelte';
@@ -21,7 +23,7 @@
   const TABS: { id: Vista; nombre: string; icono: NombreIcono }[] = [
     { id: 'inicio', nombre: 'Inicio', icono: 'inicio' },
     { id: 'buscar', nombre: 'Buscar', icono: 'buscar' },
-    { id: 'vender', nombre: 'Venta', icono: 'mas' },
+    { id: 'nuevo', nombre: 'Nuevo', icono: 'mas' },
     { id: 'encargos', nombre: 'Encargos', icono: 'encargos' },
     { id: 'mas', nombre: 'Más', icono: 'menu' },
   ];
@@ -62,7 +64,7 @@
     const dy = t.clientY - inicio.y;
     const rapido = Date.now() - inicio.t < 600;
     inicio = null;
-    const i = ORDEN.indexOf(app.vista);
+    const i = ORDEN.indexOf(app.vista === 'vender' ? 'nuevo' : app.vista);
     if (i < 0 || !rapido || Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
     const siguiente = ORDEN[i + (dx < 0 ? 1 : -1)];
     if (siguiente) app.vista = siguiente;
@@ -77,7 +79,7 @@
       <strong>Hola, {app.usuario} 🌸</strong>
     </div>
     <Radio compacta />
-    <button class="escaner" onclick={() => (app.vista = 'escanear')} aria-label="Escanear libro">
+    <button class="escaner" onclick={() => registrar('isbn')} aria-label="Escanear libro">
       <Icono nombre="camara" tam={22} />
     </button>
   </header>
@@ -89,6 +91,8 @@
           <Inicio movil />
         {:else if app.vista === 'buscar'}
           <Buscar movil />
+        {:else if app.vista === 'nuevo'}
+          <Nuevo />
         {:else if app.vista === 'vender'}
           <Vender movil />
         {:else if app.vista === 'encargos'}
@@ -112,8 +116,8 @@
 
   <nav class="barra-inferior">
     {#each TABS as tab}
-      {#if tab.id === 'vender'}
-        <button class="central" onclick={() => (app.vista = 'vender')} aria-label="Nueva venta">
+      {#if tab.id === 'nuevo'}
+        <button class="central" class:activo={['nuevo', 'vender', 'escanear'].includes(app.vista)} onclick={() => (app.vista = 'nuevo')} aria-label="Guardar libros o vender">
           <Icono nombre="mas" tam={28} grosor={2.6} />
         </button>
       {:else}
@@ -228,6 +232,12 @@
       0 10px 22px color-mix(in srgb, var(--primary) 45%, transparent),
       0 0 0 6px var(--surface);
     transition: transform 0.15s;
+  }
+  .central.activo {
+    box-shadow:
+      0 10px 22px color-mix(in srgb, var(--primary) 45%, transparent),
+      0 0 0 6px var(--surface),
+      0 0 0 9px var(--primary-soft);
   }
   .central:active {
     transform: scale(0.92);

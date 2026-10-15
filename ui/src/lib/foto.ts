@@ -1,4 +1,4 @@
-// Foto con la cámara del celular (o una imagen elegida): se reduce a 1600 px en JPEG antes de enviarla al PC.
+// Foto con la cámara del celular, solo para leer el texto de la portada (no se guarda). Se reduce a 1600 px en JPEG.
 export function tomarFoto(): Promise<string | null> {
   return new Promise((resolver) => {
     const input = document.createElement('input');
