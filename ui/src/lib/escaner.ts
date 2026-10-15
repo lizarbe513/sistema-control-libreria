@@ -40,34 +40,22 @@ export async function cancelarLectura() {
   }
 }
 
-// ── leer el título de la portada: foto → reconocimiento de texto en el teléfono (ML Kit, OcrPlugin.kt) ──
-export interface LineaLeida {
-  texto: string;
-  /** Altura de las letras en píxeles: las más grandes suelen ser el título. */
-  alto: number;
-  y: number;
-}
+// ── leer el título de la portada: se marca con el dedo sobre la foto y solo ese recorte se lee en el teléfono ──
+// (ML Kit, OcrPlugin.kt). En desarrollo, una prueba puede poner `window.__ocrPrueba(imagen)` en lugar del plugin.
+type OcrPrueba = (imagen: string) => Promise<string>;
+const ocrPrueba = (): OcrPrueba | undefined =>
+  import.meta.env.DEV && typeof window !== 'undefined' ? (window as unknown as { __ocrPrueba?: OcrPrueba }).__ocrPrueba : undefined;
 
-/** Abre la cámara, lee el texto de la foto y devuelve sus líneas (null si se canceló la foto). */
-export async function leerTexto(): Promise<LineaLeida[] | null> {
-  if (!hayCamara) return null;
-  const { tomarFoto } = await import('./foto');
-  const imagen = await tomarFoto();
-  if (!imagen) return null;
+/** Se puede leer el título con la cámara (la app del celular, o una prueba en desarrollo). */
+export const hayLectorTexto = (): boolean => hayCamara || !!ocrPrueba();
+
+/** Lee el texto de una imagen (data-URL), en orden de lectura y en una sola línea. */
+export async function reconocer(imagen: string): Promise<string> {
+  const prueba = ocrPrueba();
+  if (prueba) return prueba(imagen);
   const { invoke } = await import('@tauri-apps/api/core');
-  const r = await invoke<{ lineas: LineaLeida[] }>('plugin:ocr|reconocer', { imagen });
-  return r.lineas.filter((l) => l.texto.trim().length > 1);
-}
-
-/** El título probable: las líneas con letras casi tan grandes como las mayores, en orden de lectura. */
-export function adivinarTitulo(lineas: LineaLeida[]): string {
-  if (!lineas.length) return '';
-  const mayor = Math.max(...lineas.map((l) => l.alto));
-  return lineas
-    .filter((l) => l.alto >= mayor * 0.75)
-    .sort((a, b) => a.y - b.y)
-    .map((l) => l.texto.trim())
-    .join(' ');
+  const r = await invoke<{ texto: string }>('plugin:ocr|reconocer', { imagen });
+  return r.texto.replace(/\s+/g, ' ').trim();
 }
 
 // ── aviso al leer un código: vibración corta y un «bip» suave (se puede apagar en Ajustes) ──

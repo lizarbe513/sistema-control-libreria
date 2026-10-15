@@ -1,7 +1,8 @@
 <script lang="ts">
   // Guardar libros desde el celular, de tres formas:
   //  · ISBN: escaneo continuo del código de barras → si ya está, sumar stock; si es nuevo, completar y guardar.
-  //  · Título: la cámara lee el título de la portada (en el teléfono) → búsqueda en internet → completar y guardar.
+  //  · Título: foto con la cámara de la app → se marca el título con el dedo → se lee (en el teléfono) → búsqueda en
+  //    internet → completar y guardar.
   //  · A mano: se escribe el título → búsqueda en internet (o sin buscar) → completar y guardar.
   // La portada sale de internet. La ubicación elegida se recuerda para el siguiente: lo normal es recorrer un estante.
   import { onDestroy, onMount } from 'svelte';
@@ -11,12 +12,13 @@
   import { app, avisar } from '../estado.svelte';
   import { revisarLlegada } from '../encargos.svelte';
   import { aCentimos, inventario, inventarioCambio, vista } from '../inventario.svelte';
-  import { adivinarTitulo, avisarLectura, cancelarLectura, hayCamara, leer, leerTexto, permisoCamara, type LineaLeida } from '../escaner';
+  import { avisarLectura, cancelarLectura, hayCamara, hayLectorTexto, leer, permisoCamara } from '../escaner';
   import { alAtras } from '../atras.svelte';
   import { miniatura } from '../portada';
   import { registro, type ModoRegistro } from '../registro.svelte';
   import { esDuena } from '../sesion.svelte';
   import BuscadorLinea from '../componentes/BuscadorLinea.svelte';
+  import LectorTitulo from '../componentes/LectorTitulo.svelte';
   import SelectorUbicacion from '../componentes/SelectorUbicacion.svelte';
 
   type Fase = 'apuntando' | 'buscando' | 'titulo' | 'mano' | 'existente' | 'nuevo';
@@ -25,7 +27,7 @@
     { id: 'titulo', nombre: 'Título', emoji: '🔤' },
     { id: 'mano', nombre: 'A mano', emoji: '✍️' },
   ];
-  const modos = MODOS.filter((m) => m.id !== 'titulo' || hayCamara);
+  const modos = MODOS.filter((m) => m.id !== 'titulo' || hayLectorTexto());
 
   let fase = $state<Fase>('apuntando');
   let mensaje = $state('');
@@ -53,12 +55,11 @@
   let categoria = $state('literarias');
   let guardando = $state(false);
 
-  // lectura del título con la cámara
-  let leyendo = $state(false);
-  let lineas = $state<LineaLeida[]>([]);
+  // lectura del título con la cámara de la app
+  let lector = $state(false);
+  let leido = $state(false);
   /** Lo que se busca en internet; cambiarlo vuelve a crear el buscador con esos datos. */
   let consulta = $state({ titulo: '', autor: '', vez: 0 });
-  let destino = $state<'titulo' | 'autor'>('titulo');
 
   // la ubicación se recuerda entre libros (y entre tandas)
   const CLAVE_UBICACION = 'escaneo-ubicacion';
@@ -101,14 +102,14 @@
     existente = null;
     sug = null;
     mensaje = '';
-    lineas = [];
+    leido = false;
     if (registro.modo === 'isbn') {
       fase = 'apuntando';
       void ciclo();
     } else if (registro.modo === 'titulo') {
       fase = 'titulo';
       consulta = { titulo: '', autor: '', vez: consulta.vez + 1 };
-      void leerTitulo();
+      void abrirLector();
     } else {
       fase = 'mano';
       consulta = { titulo: '', autor: '', vez: consulta.vez + 1 };
@@ -203,35 +204,16 @@
     fase = 'nuevo';
   }
 
-  // ── título leído con la cámara ──
-  async function leerTitulo() {
-    if (leyendo) return;
-    leyendo = true;
-    mensaje = '';
-    try {
-      const r = await leerTexto();
-      if (!r) return; // canceló la foto
-      if (!r.length) {
-        avisarLectura(false);
-        mensaje = 'No pude leer texto en esa foto. Acércate a la portada, con buena luz, y prueba otra vez.';
-        return;
-      }
-      avisarLectura();
-      lineas = [...r].sort((a, b) => b.alto - a.alto).slice(0, 12);
-      destino = 'titulo';
-      consulta = { titulo: adivinarTitulo(r), autor: '', vez: consulta.vez + 1 };
-    } catch (e) {
-      mensaje = (e as Error).message;
-    } finally {
-      leyendo = false;
-    }
+  // ── título leído con la cámara de la app ──
+  async function abrirLector() {
+    await cancelarLectura(); // la cámara no puede estar con el escáner de ISBN y con el lector a la vez
+    lector = true;
   }
 
-  /** Tocar una línea leída la pone como título o como autor, y busca de nuevo. */
-  function usarLinea(texto: string) {
-    const t = texto.trim();
-    consulta = destino === 'titulo' ? { ...consulta, titulo: t, vez: consulta.vez + 1 } : { ...consulta, autor: t, vez: consulta.vez + 1 };
-    if (destino === 'titulo') destino = 'autor';
+  function alLeer(r: { titulo: string; autor: string }) {
+    lector = false;
+    leido = true;
+    consulta = { titulo: r.titulo, autor: r.autor, vez: consulta.vez + 1 };
   }
 
   async function elegirEnLinea(r: ResultadoLinea) {
@@ -341,6 +323,10 @@
   }
 </script>
 
+{#if lector}
+  <LectorTitulo onListo={alLeer} onCerrar={() => (lector = false)} />
+{/if}
+
 <div class="escaner" class:con-camara={hayCamara && fase === 'apuntando'} data-vacio>
   <header>
     <strong>Guardar libros</strong>
@@ -372,28 +358,16 @@
     {:else if fase === 'titulo' || fase === 'mano'}
       <div class="por-titulo" data-testid="registro-{fase}">
         {#if fase === 'titulo'}
-          <button class="btn btn-primario grande" onclick={leerTitulo} disabled={leyendo} data-testid="leer-titulo">
-            {leyendo ? 'Leyendo…' : lineas.length ? '🔤 Leer otra portada' : '🔤 Leer el título de la portada'}
+          <button class="btn btn-primario grande" onclick={abrirLector} data-testid="leer-titulo">
+            {leido ? '🔤 Leer otra portada' : '🔤 Leer el título de la portada'}
           </button>
-          {#if mensaje}<p class="aviso" role="alert">{mensaje}</p>{/if}
-          {#if lineas.length}
-            <div class="leido">
-              <div class="destino">
-                <small>Toca lo leído para ponerlo en:</small>
-                <button class:activo={destino === 'titulo'} onclick={() => (destino = 'titulo')}>Título</button>
-                <button class:activo={destino === 'autor'} onclick={() => (destino = 'autor')}>Autor</button>
-              </div>
-              <div class="lineas" data-sin-deslizar>
-                {#each lineas as l, i (i)}<button class="linea" onclick={() => usarLinea(l.texto)}>{l.texto}</button>{/each}
-              </div>
-            </div>
-          {:else if !leyendo}
-            <p class="atenuado ayuda">Apunta a la portada con buena luz. Se lee el texto en el mismo teléfono y se busca el libro en internet, con su portada.</p>
+          {#if !leido}
+            <p class="atenuado ayuda">Toma una foto de la portada y marca con el dedo el título: solo eso se lee, en el mismo teléfono, y se busca en internet con su portada.</p>
           {/if}
         {:else}
           <p class="guia">Escribe el título (y el autor si lo sabes) y búscalo en internet: trae los datos y la portada.</p>
         {/if}
-        {#if fase === 'mano' || lineas.length}
+        {#if fase === 'mano' || leido}
           {#key consulta.vez}
             <BuscadorLinea onElegir={elegirEnLinea} tituloInicial={consulta.titulo} autorInicial={consulta.autor} buscarAlAbrir={!!consulta.titulo} columna />
           {/key}
@@ -682,48 +656,6 @@
     margin: 0;
     font-size: 13px;
     text-align: center;
-  }
-  .leido {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .destino {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .destino small {
-    flex: 1;
-    font-weight: 700;
-    color: var(--muted);
-  }
-  .destino button {
-    padding: 4px 12px;
-    border-radius: 999px;
-    background: var(--surface-2);
-    font-weight: 800;
-    font-size: 12px;
-  }
-  .destino button.activo {
-    background: var(--primary-soft);
-    color: var(--primary-strong);
-  }
-  .lineas {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    max-height: 120px;
-    overflow-y: auto;
-  }
-  .linea {
-    padding: 6px 12px;
-    border-radius: 12px;
-    border: 1.5px solid var(--linea);
-    background: var(--surface);
-    font-weight: 700;
-    font-size: 13px;
-    text-align: left;
   }
   .enlace {
     align-self: center;

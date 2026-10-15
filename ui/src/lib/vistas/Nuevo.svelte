@@ -2,12 +2,12 @@
   // Celular, botón «+»: lo que más se hace con el teléfono en la mano. Guardar libros (tres formas) o vender.
   import Icono from '../componentes/Icono.svelte';
   import { app } from '../estado.svelte';
-  import { hayCamara } from '../escaner';
+  import { hayLectorTexto } from '../escaner';
   import { registrar, type ModoRegistro } from '../registro.svelte';
 
   const formas: { modo: ModoRegistro; emoji: string; nombre: string; detalle: string; soloCamara?: boolean }[] = [
     { modo: 'isbn', emoji: '📷', nombre: 'Escanear el ISBN', detalle: 'El código de barras de la contratapa. Lo más rápido para recorrer un estante.' },
-    { modo: 'titulo', emoji: '🔤', nombre: 'Leer el título', detalle: 'Para libros sin código: la cámara lee la portada y lo busca en internet.', soloCamara: true },
+    { modo: 'titulo', emoji: '🔤', nombre: 'Leer el título', detalle: 'Para libros sin código: toma una foto, marca el título con el dedo y se busca en internet.', soloCamara: true },
     { modo: 'mano', emoji: '✍️', nombre: 'Escribir el título', detalle: 'Lo buscas en internet por título y autor, o llenas los datos a mano.' },
   ];
 </script>
@@ -16,7 +16,7 @@
   <h1>Guardar libros</h1>
   <div class="formas">
     {#each formas as f (f.modo)}
-      {@const sinCamara = f.soloCamara && !hayCamara}
+      {@const sinCamara = f.soloCamara && !hayLectorTexto()}
       <button class="tarjeta forma" class:principal={f.modo === 'isbn'} disabled={sinCamara} onclick={() => registrar(f.modo)} data-testid="registrar-{f.modo}">
         <span class="emoji" aria-hidden="true">{f.emoji}</span>
         <span class="texto">

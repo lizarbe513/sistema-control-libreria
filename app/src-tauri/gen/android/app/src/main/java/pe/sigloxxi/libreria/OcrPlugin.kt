@@ -1,7 +1,7 @@
 package pe.sigloxxi.libreria
 
-// Lee el texto de una foto (la portada de un libro) en el mismo teléfono, con ML Kit: sin internet y sin guardar la
-// imagen. Devuelve cada línea con su altura en píxeles: las letras más grandes suelen ser el título.
+// Lee el texto de un recorte de la portada (lo que se marcó con el dedo: el título o el autor) en el mismo teléfono, con
+// ML Kit: sin internet y sin guardar la imagen. Devuelve el texto en orden de lectura, en una sola línea.
 import android.app.Activity
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -41,18 +41,16 @@ class OcrPlugin(private val activity: Activity) : Plugin(activity) {
         }
         lector.process(InputImage.fromBitmap(foto, 0))
             .addOnSuccessListener { texto ->
-                val lineas = JSArray()
-                for (bloque in texto.textBlocks) {
-                    for (linea in bloque.lines) {
-                        val l = JSObject()
-                        l.put("texto", linea.text)
-                        l.put("alto", linea.boundingBox?.height() ?: 0)
-                        l.put("y", linea.boundingBox?.top ?: 0)
-                        lineas.put(l)
-                    }
-                }
+                // de arriba hacia abajo y de izquierda a derecha: un título en dos renglones queda en una sola línea
+                val lineas = texto.textBlocks.flatMap { it.lines }
+                    .sortedWith(compareBy({ it.boundingBox?.top ?: 0 }, { it.boundingBox?.left ?: 0 }))
+                    .map { it.text.trim() }
+                    .filter { it.isNotEmpty() }
+                val lista = JSArray()
+                lineas.forEach { lista.put(it) }
                 val r = JSObject()
-                r.put("lineas", lineas)
+                r.put("texto", lineas.joinToString(" "))
+                r.put("lineas", lista)
                 invoke.resolve(r)
             }
             .addOnFailureListener { e -> invoke.reject(e.message ?: "No se pudo leer el texto") }

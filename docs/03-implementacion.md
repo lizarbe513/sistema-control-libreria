@@ -303,9 +303,15 @@ cuántos títulos y ejemplares van en la tanda. Sin cámara (o sin permiso) se p
 - **Menú «Más»** (`vistas/Mas.svelte`): Libros, Clientes, Reportes (Dueña) y Ajustes.
 - **Panel «+» (`vistas/Nuevo.svelte`):** guardar libros es lo principal del celular. Tres tarjetas grandes:
   - **Escanear el ISBN:** escaneo continuo del código de barras;
-  - **Leer el título:** la cámara toma la portada y **el mismo teléfono lee el texto** con ML Kit (plugin propio
-    `OcrPlugin.kt`, registrado con `register_android_plugin`; sin internet). Las letras más grandes se proponen como título,
-    se buscan en internet y las demás líneas leídas se pueden tocar para usarlas como título o autor. La foto no se guarda;
+  - **Leer el título:** cámara **dentro de la app** (`componentes/LectorTitulo.svelte`, con `getUserMedia`; el WebView
+    pide el permiso de cámara por su cuenta), con linterna si el teléfono la tiene. El flujo es **foto → selección →
+    lectura**:
+    1. se toma la foto, que es exactamente lo que se veía en pantalla;
+    2. se marca el título con el dedo: un rectángulo con asas para ajustarlo;
+    3. **solo ese recorte** (agrandado si es chico) se lee en el teléfono con ML Kit (plugin propio `OcrPlugin.kt`,
+       registrado con `register_android_plugin`; sin internet). Así no se cuelan subtítulos ni editorial;
+    4. después se puede marcar también el autor y buscar en internet. La foto no se guarda. Tras guardar el libro, la
+       cámara se abre sola para el siguiente.
   - **Escribir el título:** búsqueda en internet por título y autor, o llenar los datos a mano.
 
   Debajo queda «Nueva venta». Dentro de «Guardar libros» se cambia de forma con las pestañas ISBN · Título · A mano.
