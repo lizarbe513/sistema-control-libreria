@@ -253,6 +253,47 @@ se corta. Los respaldos anteriores siguen pidiendo la contraseña con la que se 
 **«Olvidé mi PIN»:** en la pantalla de entrada, al elegir a la Dueña. Pide la contraseña maestra (mismo límite de
 intentos) y un PIN nuevo; el núcleo solo lo permite para una Dueña (a las vendedoras les cambia el PIN ella).
 
+## Celulares (hito 7)
+
+**Idea:** el celular no tiene base de datos propia. Es una app (Tauri para Android, la misma interfaz) que habla con el PC
+de la tienda por el WiFi: una sola fuente de datos, siempre al día. El PC debe estar encendido con la app abierta.
+
+**Servidor en el PC** (`app/src-tauri/src/{servidor,rpc,celular}.rs`):
+- HTTPS (`tokio-rustls` con `ring`) con un **certificado propio**, que se crea la primera vez y se guarda **dentro de la base
+  cifrada**. Escucha en el puerto 47321 (o el siguiente libre). Se enciende en Ajustes → Celulares y solo corre con la
+  librería abierta.
+- **Vinculación:** el PC muestra un QR (`siglo://vincular?h=<ips>&p=<puerto>&c=<código>&f=<huella>&n=<tienda>`) con un código
+  de 8 letras de **un solo uso que vale 5 minutos** (cinco intentos fallidos bloquean 30 s). El celular recibe un **token de
+  256 bits**; en la base solo queda su hash SHA-256. Cada celular tiene el suyo y la Dueña lo puede **desconectar** (el token
+  deja de servir al instante).
+- **Órdenes:** `POST /api/rpc/<orden>` con el token. `rpc.rs` llama a **las mismas funciones** que usa la interfaz del PC, así
+  los permisos y las reglas son idénticos. Quedan fuera las que solo tienen sentido en el PC (configurar, abrir carpetas,
+  respaldos, exportar, editor de la tienda). WhatsApp: el PC devuelve la dirección y el celular la abre.
+- **Sesión por celular:** cada celular entra con el PIN de una persona, con el mismo límite de intentos. La sesión del celular
+  se guarda aparte (vence a las 12 h sin uso) y se aplica a la orden con una variable por hilo (`estado::como_celular`): **un
+  celular sin sesión nunca hereda la del PC** y el PC y el celular pueden tener personas distintas a la vez (hay una prueba
+  para esto).
+- Portadas: `GET /portadas/<archivo>` (solo nombres simples) con el token.
+
+**Seguridad de la conexión:** los datos viajan cifrados. El celular **fija el certificado del PC por su huella** (la del
+QR): si quien responde presenta otro certificado, rustls corta el apretón de manos **antes de enviar el token**
+(`lan_cliente.rs`, con prueba). Vincular a mano (sin QR) fija la huella que presenta el PC en ese momento.
+
+**App del celular** (`ui/src/lib/api/lan.ts`, `acceso/{Vincular,SinConexion}.svelte`, `vistas/Escanear.svelte`):
+`ApiLan` es la misma API que el PC, pero cada orden va por el comando `lan_pedir` (Rust). Si el PC no responde, aparece
+«No encuentro el PC»; si lo desconectaron, vuelve a «Vincular». En Ajustes del celular se ocultan las secciones que son
+solo del PC (respaldos, celulares, contraseña maestra, QR de Yape).
+
+**Escaneo continuo de ISBN:** botón 📷 del encabezado → cámara (plugin oficial `barcode-scanner`, en ventana, con la
+pantalla transparente) → si el ISBN ya está, tarjeta «Ya lo tienes» con +1 / +5 / N; si es nuevo, formulario con los datos
+de internet (título, autor, portada) para precio, costo, stock y categoría → «Guardar y siguiente». Un contador muestra
+cuántos títulos y ejemplares van en la tanda. Sin cámara (o sin permiso) se puede escribir el ISBN a mano.
+
+**Estado:** servidor, vinculación, sesiones, cliente con huella fija y la interfaz del celular están hechos y probados
+(`cargo test`: sesiones, tokens, huella; e2e con la app real y un navegador con pantalla de celular: vincular, PIN,
+escaneo por ISBN, vender, portadas, desconectar). **Falta** compilar el APK (`cargo tauri android init/build`), que
+necesita el SDK de Android, y probar la cámara en un teléfono real.
+
 ## Estado de los hitos
 
 | Hito | Contenido | Estado |
@@ -263,7 +304,7 @@ intentos) y un PIN nuevo; el núcleo solo lo permite para una Dueña (a las vend
 | 4. Encargos y clientes | Fichas con historial, tablero por estados, adelanto, aviso por WhatsApp, carta al ingresar stock, entrega desde Vender | ✅ |
 | 5. Reportes | Por período, más vendidos, categorías, ganancia, cuadre de caja, libros sin movimiento, exportar CSV | ✅ |
 | 6. Respaldos y configuración | Respaldo automático y manual con carpeta externa, restaurar, cambiar la contraseña maestra, «olvidé mi PIN» | ✅ |
-| 7. Celular | Servidor LAN (axum), vinculación por QR, escaneo de ISBN, app Android | Pendiente (falta el SDK de Android en el equipo de desarrollo) |
+| 7. Celular | Servidor LAN (HTTPS), vinculación por QR, escaneo de ISBN, app Android | En curso: servidor y app listos; falta compilar el APK y probar la cámara (necesita el SDK de Android) |
 | 8. Asistente IA | Gemini + Groq, *function calling* sobre el inventario | Pendiente |
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 
@@ -294,31 +335,30 @@ intentos) y un PIN nuevo; el núcleo solo lo permite para una Dueña (a las vend
 
 ## Preparar Android (hito 7)
 
-Para compilar el APK hacen falta el SDK de Android y un teléfono (o el emulador). En este equipo ya están el
-JDK 17, `yay`, `/dev/kvm` y espacio en disco; faltan estas piezas, que se instalan con `sudo`:
+Para compilar el APK hacen falta el SDK de Android y un teléfono. En este equipo ya están el JDK 17, `yay`, `cmdline-tools` y
+`platform-tools` (en `/opt/android-sdk`). Faltan estos pasos (el único `sudo` es el primero):
 
 ```bash
-# 1. SDK (herramientas de línea de comandos, plataforma-tools y NDK) desde AUR
-yay -S android-sdk-cmdline-tools-latest android-sdk-platform-tools android-ndk
-sudo gpasswd -a $USER sdkusers        # permite usar /opt/android-sdk sin sudo (cerrar sesión y volver a entrar)
+# 1. /opt/android-sdk pasa a ser del usuario (así sdkmanager puede instalar sin sudo)
+sudo chown -R $USER:$USER /opt/android-sdk
 
-# 2. Licencias y plataformas
+# 2. Licencias + plataforma + herramientas de compilación + NDK
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk       # Gradle no soporta bien el JDK 26
 export ANDROID_HOME=/opt/android-sdk
 yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
-$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
-```
+$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
 
-Variables que usa Tauri (se agregan a `~/.bashrc` o `~/.zshrc`):
-
-```bash
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk   # Gradle no soporta bien el JDK 26
+# 3. Variables permanentes
+cat >> ~/.bashrc <<'EOF'
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 export ANDROID_HOME=/opt/android-sdk
-export NDK_HOME=/opt/android-ndk
+export NDK_HOME=/opt/android-sdk/ndk/27.2.12479018
+export PATH=$PATH:/opt/android-sdk/platform-tools
+EOF
 ```
 
-Teléfono: Android 8 o superior, con *Opciones de desarrollador → Depuración por USB*, conectado por cable y
-aceptando la huella de la PC en su pantalla (`adb devices` debe listarlo). Sin teléfono se puede usar el emulador
-(`/dev/kvm` está disponible; la imagen del sistema pesa unos 3 GB).
+Teléfono: Android 8 o superior, con *Opciones de desarrollador → Depuración por USB*, conectado por cable y aceptando la huella
+de la PC (`adb devices` debe listarlo). Debe estar en el **mismo WiFi** que el PC. Ya están agregados los *targets* de Rust
+(`aarch64-linux-android`, `armv7-linux-androideabi`, `i686-linux-android`, `x86_64-linux-android`).
 
-Lo demás lo hace el desarrollo: `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`,
 `cargo tauri android init` y la compilación del APK.
