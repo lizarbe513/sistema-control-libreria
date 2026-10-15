@@ -136,6 +136,13 @@ pub fn portada_desde_archivo(estado: State<Estado>, id: i64, ruta: String) -> Re
     guardar_portada(&estado, id, &bytes)
 }
 
+/// Foto subida desde el celular (data-URL): se reduce y se guarda igual que las demás portadas.
+#[tauri::command]
+pub fn portada_desde_datos(estado: State<Estado>, id: i64, datos: String) -> Res<Libro> {
+    let bytes = portadas::desde_base64(&datos)?;
+    guardar_portada(&estado, id, &bytes)
+}
+
 #[tauri::command]
 pub fn portada_quitar(estado: State<Estado>, id: i64) -> Res<Libro> {
     con_abierta(&estado, |a| {

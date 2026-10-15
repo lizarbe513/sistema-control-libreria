@@ -61,7 +61,7 @@ fn celular_movil() {
                 }
             });
         })
-        .invoke_handler(tauri::generate_handler![lan_cliente::lan_pedir])
+        .invoke_handler(tauri::generate_handler![lan_cliente::lan_pedir, lan_cliente::lan_descubrir])
         .run(tauri::generate_context!())
         .expect("no se pudo iniciar la app del celular");
 }
@@ -106,6 +106,7 @@ fn escritorio() {
             inventario::portada_desde_url,
             inventario::portada_desde_archivo,
             inventario::portada_quitar,
+            inventario::portada_desde_datos,
             inventario::ruta_portadas,
             inventario::tienda_cargar,
             inventario::tienda_guardar,
@@ -154,6 +155,7 @@ fn escritorio() {
             celular::celulares_codigo,
             celular::celulares_desconectar,
             lan_cliente::lan_pedir,
+            lan_cliente::lan_descubrir,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar la Librería SIGLO XXI")

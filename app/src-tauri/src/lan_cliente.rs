@@ -200,6 +200,49 @@ pub async fn lan_pedir(
     })
 }
 
+/// Busca al PC vinculado en la misma red /24 de las direcciones conocidas (el router pudo cambiarle la IP). Solo
+/// cuenta quien presenta **el certificado fijado**: otro equipo con el puerto abierto no pasa el TLS.
+pub async fn descubrir(hosts: &[String], puerto: u16, huella: &str, rango: std::ops::RangeInclusive<u8>) -> Option<String> {
+    let mut prefijos: Vec<String> = hosts
+        .iter()
+        .filter_map(|h| h.parse::<std::net::Ipv4Addr>().ok())
+        .map(|ip| {
+            let o = ip.octets();
+            format!("{}.{}.{}", o[0], o[1], o[2])
+        })
+        .collect();
+    prefijos.dedup();
+    let mut tareas = tokio::task::JoinSet::new();
+    for p in prefijos {
+        for n in rango.clone() {
+            let (host, huella) = (format!("{p}.{n}"), huella.to_string());
+            tareas.spawn(async move {
+                let r = tokio::time::timeout(
+                    Duration::from_millis(1500),
+                    pedir(&host, puerto, Some(&huella), Method::GET, "/api/ping", None, None),
+                )
+                .await;
+                matches!(r, Ok(Ok(ref x)) if x.estado == 200).then_some(host)
+            });
+        }
+    }
+    while let Some(r) = tareas.join_next().await {
+        if let Ok(Some(host)) = r {
+            tareas.abort_all();
+            return Some(host);
+        }
+    }
+    None
+}
+
+#[tauri::command]
+pub async fn lan_descubrir(hosts: Vec<String>, puerto: u16, huella: String) -> Result<Option<String>, String> {
+    if huella.is_empty() {
+        return Ok(None);
+    }
+    Ok(descubrir(&hosts, puerto, &huella, 1..=254).await)
+}
+
 /// Las portadas llegan por `lan://…/<datos en base64>/<archivo>`: se piden al PC con el mismo certificado fijado.
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn portada(ruta: &str) -> (u16, String, Vec<u8>) {
@@ -311,6 +354,16 @@ mod tests {
         // sin huella conocida (vinculación a mano): acepta y dice cuál vio
         let r = pedir("127.0.0.1", puerto, None, Method::GET, "/api/ping", None, None).await.unwrap();
         assert_eq!(r.huella, huella_ok);
+    }
+
+    #[tokio::test]
+    async fn descubre_al_pc_por_su_huella() {
+        let (puerto, huella_ok) = servidor().await;
+        // la dirección guardada ya no sirve (otro número), pero está en la misma red
+        let viejos = vec!["127.0.0.200".to_string()];
+        assert_eq!(descubrir(&viejos, puerto, &huella_ok, 1..=3).await.as_deref(), Some("127.0.0.1"));
+        // con otra huella nadie califica
+        assert_eq!(descubrir(&viejos, puerto, &"ab".repeat(32), 1..=3).await, None);
     }
 
     #[test]

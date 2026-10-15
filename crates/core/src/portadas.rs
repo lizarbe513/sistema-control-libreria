@@ -62,6 +62,33 @@ pub async fn descargar(url: &str) -> Result<Vec<u8>> {
     Ok(bytes.to_vec())
 }
 
+/// Imagen que llega como texto (data-URL o base64 pelado), p. ej. una foto tomada con el celular.
+pub fn desde_base64(texto: &str) -> Result<Vec<u8>> {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let datos = texto.split_once(",").map(|(_, d)| d).unwrap_or(texto);
+    if datos.len() > BYTES_MAX * 4 / 3 + 16 {
+        return Err(Error::Validacion("La imagen es demasiado grande (máximo 12 MB)".into()));
+    }
+    let mut salida = Vec::with_capacity(datos.len() * 3 / 4);
+    let (mut acc, mut bits) = (0u32, 0u32);
+    for c in datos.bytes().filter(|c| !c.is_ascii_whitespace() && *c != b'=') {
+        let c = match c {
+            b'-' => b'+',
+            b'_' => b'/',
+            otro => otro,
+        };
+        let v = T.iter().position(|x| *x == c).ok_or_else(|| Error::Validacion("La imagen llegó dañada".into()))? as u32;
+        acc = (acc << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            salida.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    Ok(salida)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,5 +111,13 @@ mod tests {
         assert_eq!(b, "7-2.jpg");
         assert!(!dir.path().join(&a).exists(), "la versión anterior se borra");
         assert!(guardar(dir.path(), 8, b"no soy una imagen").is_err());
+    }
+
+    #[test]
+    fn base64_y_data_url() {
+        assert_eq!(desde_base64("aGVsbG8h").unwrap(), b"hello!");
+        assert_eq!(desde_base64("data:image/jpeg;base64,aGVs\nbG8h").unwrap(), b"hello!");
+        assert_eq!(desde_base64("Zg==").unwrap(), b"f");
+        assert!(desde_base64("no$vale").is_err());
     }
 }
