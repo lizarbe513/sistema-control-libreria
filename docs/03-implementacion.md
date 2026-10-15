@@ -291,8 +291,24 @@ cuántos títulos y ejemplares van en la tanda. Sin cámara (o sin permiso) se p
 
 **Estado:** servidor, vinculación, sesiones, cliente con huella fija y la interfaz del celular están hechos y probados
 (`cargo test`: sesiones, tokens, huella; e2e con la app real y un navegador con pantalla de celular: vincular, PIN,
-escaneo por ISBN, vender, portadas, desconectar). **Falta** compilar el APK (`cargo tauri android init/build`), que
-necesita el SDK de Android, y probar la cámara en un teléfono real.
+escaneo por ISBN, vender, portadas, desconectar). El **APK** ya compila y está firmado; falta probar la cámara y la conexión en un teléfono real.
+
+### Compilar e instalar el APK (sin cable)
+
+```bash
+cd app
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk ANDROID_HOME=/opt/android-sdk NDK_HOME=/opt/android-sdk/ndk/27.2.12479018
+cargo tauri android init --ci                          # una sola vez (genera app/src-tauri/gen/android, que no se versiona)
+cargo tauri android build --apk --target aarch64       # versión liviana (~17 MB); --debug trae símbolos (~200 MB)
+```
+
+El APK de *release* sale sin firmar: se alinea y se firma con `zipalign` y `apksigner` (build-tools 35.0.0) usando la llave
+`~/.android/siglo-xxi-release.jks` (**fuera del repositorio**; su contraseña está en `~/.android/siglo-xxi-release.pass`). Hay
+que **guardar esa llave**: las actualizaciones del APK deben firmarse con la misma. El archivo final es `Libreria-SIGLO-XXI.apk`
+(paquete `pe.sigloxxi.libreria`, permisos de Internet y cámara). Se pasa al teléfono por Drive, WhatsApp o un pendrive OTG y se
+instala permitiendo «orígenes desconocidos» para esa app. Con el teléfono conectado por USB (`adb devices`) también sirve
+`cargo tauri android dev`. Si el PC tiene UFW, el celular necesita llegar al servidor:
+`sudo ufw allow from 192.168.1.0/24 to any port 47321 proto tcp`.
 
 ## Estado de los hitos
 
