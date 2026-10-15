@@ -158,6 +158,26 @@ pub async fn ejecutar(app: &AppHandle, cmd: &str, args: Value, usuaria: Option<U
                 .map_err(|_| Error::Validacion("La orden se interrumpió".into()))??;
             salida(asistente::responder(app, p, a.historial, a.tz_min).await)
         }
+        "asistente_confirmar" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                id: String,
+                extra: Option<asistente::Extra>,
+            }
+            let a: A = serde_json::from_value(args).map_err(arg_err)?;
+            salida(asistente::confirmar(app, a.id, a.extra.unwrap_or_default(), Some(usuaria)).await)
+        }
+        "asistente_descartar" => {
+            #[derive(serde::Deserialize)]
+            struct A {
+                id: String,
+            }
+            let a: A = serde_json::from_value(args).map_err(arg_err)?;
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || como_celular(usuaria, || salida(asistente::descartar(&app, &a.id))))
+                .await
+                .map_err(|_| Error::Validacion("La orden se interrumpió".into()))?
+        }
         // WhatsApp: el PC no abre nada; devuelve la dirección y el celular la abre
         "encargo_avisar_whatsapp" => {
             let a: Id = serde_json::from_value(args).map_err(arg_err)?;

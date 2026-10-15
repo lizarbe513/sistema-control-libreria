@@ -16,6 +16,29 @@
   // svelte-ignore state_referenced_locally
   let pestana = $state<'tablero' | 'clientes'>(encargosUI.pestana ?? 'tablero');
   encargosUI.pestana = null;
+
+  // «Ver encargo» desde la asistente: se resalta la tarjeta un momento y se lleva a la vista
+  let resaltado = $state<number | null>(null);
+  $effect(() => {
+    const id = encargosUI.resaltar;
+    if (id === null) return;
+    encargosUI.resaltar = null;
+    pestana = 'tablero';
+    resaltado = id;
+    let intentos = 0;
+    const buscar = setInterval(() => {
+      const el = document.querySelector(`[data-encargo="${id}"]`);
+      if (el || ++intentos > 20) {
+        clearInterval(buscar);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      }
+    }, 150);
+    const fin = setTimeout(() => (resaltado = null), 4000);
+    return () => {
+      clearInterval(buscar);
+      clearTimeout(fin);
+    };
+  });
   let activos = $state<Encargo[]>([]);
   let cerrados = $state<Encargo[]>([]);
   let verCerrados = $state(false);
@@ -193,6 +216,8 @@
             {@const s = saldo(e)}
             <article
               class="tarjeta enc"
+              class:resaltado={resaltado === e.id}
+              data-encargo={e.id}
               class:arrastrando={arrastrado === e.id}
               draggable="true"
               ondragstart={(ev) => {
@@ -287,6 +312,16 @@
 {/if}
 
 <style>
+  .enc.resaltado {
+    outline: 3px solid var(--primary);
+    outline-offset: 2px;
+    animation: brillo 1s ease-in-out 3;
+  }
+  @keyframes brillo {
+    50% {
+      box-shadow: 0 0 0 8px color-mix(in srgb, var(--primary) 30%, transparent);
+    }
+  }
   .encargos {
     display: flex;
     flex-direction: column;

@@ -5,6 +5,8 @@ import type { Tienda } from '../tienda/modelo';
 import type {
   CategoriaApi,
   MensajeChat,
+  Confirmado,
+  ExtraConfirmacion,
   ProveedorIa,
   RespuestaAsistente,
   Cliente,
@@ -265,6 +267,12 @@ export class ApiTauri implements Api {
   }
   asistenteGuardarConfig(proveedor: string, clave: string | null, modelo: string | null) {
     return this.llamar<ProveedorIa[]>('asistente_guardar_config', { proveedor, clave, modelo });
+  }
+  asistenteConfirmar(id: string, extra: ExtraConfirmacion) {
+    return this.llamar<Confirmado>('asistente_confirmar', { id, extra });
+  }
+  asistenteDescartar(id: string) {
+    return this.llamar<void>('asistente_descartar', { id });
   }
   asistenteProbar(proveedor: string, clave: string | null) {
     return this.llamar<string[]>('asistente_probar', { proveedor, clave });

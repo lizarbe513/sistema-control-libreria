@@ -6,7 +6,10 @@
   import Icono from '../componentes/Icono.svelte';
   import { soles, type Libro } from '../datos';
   import { app, avisar } from '../estado.svelte';
-  import { bloques, chat, nuevaConversacion, preguntar, reintentar, revisarDueno } from '../asistente.svelte';
+  import { bloques, chat, irA, nombreDestino, nuevaConversacion, preguntar, reintentar, revisarDueno, type MensajeAsistente } from '../asistente.svelte';
+  import { abrirNuevoEncargo } from '../encargos.svelte';
+  import type { ResultadoLinea } from '../api';
+  import TarjetaAccion from '../componentes/TarjetaAccion.svelte';
   import { miniatura } from '../portada';
   import { esDuena } from '../sesion.svelte';
   import { resolver, textoCorto } from '../tienda/modelo';
@@ -22,6 +25,8 @@
     '¿Qué libros se agotaron?',
     'Algo de misterio para un chico de 15 que le gustó Harry Potter',
     '¿Qué debería reponer?',
+    'Recomiéndame una novela de ciencia ficción que no tengamos',
+    '¿Qué encargos hay pendientes?',
     'Escribe un mensaje para avisar a los clientes de las novedades',
   ]);
 
@@ -70,6 +75,14 @@
   }
 
   const libroDe = (m: { libros?: Libro[] }, id: number) => m.libros?.find((l) => l.id === id);
+  const webDe = (m: MensajeAsistente, ref: string) => m.externos?.find((x) => x.referencia === ref)?.resultado;
+
+  /** Portadas de internet que no cargaron: se muestra un libro de relleno. */
+  let rotas = $state(new Set<string>());
+
+  function encargar(r: ResultadoLinea) {
+    abrirNuevoEncargo({ titulo: r.titulo, autor: r.autor, resultado: r });
+  }
 </script>
 
 <div class="chat-ia" class:movil data-vacio>
@@ -97,14 +110,21 @@
 
     {#each chat.mensajes as m, i (i)}
       <div class="fila {m.rol}" in:fly={{ y: 8, duration: 220 }}>
-        <div class="burbuja" class:error={m.error} data-testid="burbuja-{m.rol}">
+        <div class="burbuja" class:error={m.error} class:nota={m.nota} data-testid={m.nota ? 'nota' : `burbuja-${m.rol}`}>
           {#each bloques(m.texto) as b, j (j)}
             <p class:vineta={b.vineta}>
               {#each b.trozos as t, k (k)}
                 {#if t.tipo === 'libro'}
                   {@const l = libroDe(m, t.id)}
                   {#if l}<button class="cita" onclick={() => abrir(l)}>📖 {l.titulo}</button>{/if}
-                {:else if t.tipo === 'negrita'}<strong>{t.texto}</strong>{:else}{t.texto}{/if}
+                {:else if t.tipo === 'web'}
+                  {@const w = webDe(m, t.ref)}
+                  {#if w}<span class="cita web">🌐 {w.titulo}</span>{/if}
+                {:else if t.tipo === 'accion'}
+                  <span class="cita accion">👇 ver la tarjeta</span>
+                {:else if t.tipo === 'ir'}
+                  <button class="cita ir" onclick={() => irA(t.ref)} data-testid="enlace-ir">{nombreDestino(t.ref)} →</button>
+                {:else if t.tipo === 'negrita'}<strong>{t.texto}</strong>{:else if t.tipo === 'texto'}{t.texto}{/if}
               {/each}
             </p>
           {/each}
@@ -127,7 +147,27 @@
               {/each}
             </div>
           {/if}
-          {#if m.rol === 'asistente'}
+          {#if m.externos?.length}
+            <div class="fichas">
+              {#each m.externos as x (x.referencia)}
+                <div class="ficha tarjeta externa" data-testid="ficha-web">
+                  {#if x.resultado.portadaUrl && !rotas.has(x.referencia)}
+                    <img src={x.resultado.portadaUrl} alt="" loading="lazy" onerror={() => (rotas = new Set([...rotas, x.referencia]))} />
+                  {:else}<span class="sin-portada">📖</span>{/if}
+                  <span class="datos">
+                    <strong>{x.resultado.titulo}</strong>
+                    <small>{[x.resultado.autor, x.resultado.editorial, x.resultado.anio].filter(Boolean).join(' · ')}</small>
+                    <span class="etiqueta-web">🌐 No está en la tienda</span>
+                    <button class="btn btn-primario mini" onclick={() => encargar(x.resultado)} data-testid="encargar-web">Encargar</button>
+                  </span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          {#each m.acciones ?? [] as a (a.id)}
+            <TarjetaAccion tarjeta={a} />
+          {/each}
+          {#if m.rol === 'asistente' && !m.nota}
             <div class="pie">
               {#if m.error}
                 <button class="enlace" onclick={reintentar}>Reintentar</button>
@@ -267,6 +307,52 @@
     color: var(--primary);
     font-weight: 800;
   }
+  .burbuja.nota {
+    background: color-mix(in srgb, #5dbb8a 16%, var(--surface));
+    color: #23704a;
+    font-weight: 700;
+    font-size: 13px;
+    box-shadow: none;
+  }
+  .cita.web {
+    background: color-mix(in srgb, #7aa7e8 22%, var(--surface));
+    color: #2c5a99;
+  }
+  .cita.accion {
+    background: var(--surface-2);
+    color: var(--muted);
+  }
+  .cita.ir {
+    background: var(--primary);
+    color: var(--on-primary);
+  }
+  .externa {
+    cursor: default;
+  }
+  .sin-portada {
+    width: 44px;
+    height: 64px;
+    display: grid;
+    place-items: center;
+    border-radius: 5px;
+    background: var(--surface-2);
+    flex: none;
+  }
+  .etiqueta-web {
+    align-self: flex-start;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, #7aa7e8 22%, var(--surface));
+    color: #2c5a99;
+  }
+  .mini {
+    align-self: flex-start;
+    margin-top: 4px;
+    padding: 4px 14px;
+    font-size: 12px;
+  }
   .cita {
     display: inline;
     padding: 0 6px;
@@ -295,6 +381,7 @@
     filter: grayscale(0.7);
   }
   .ficha img {
+    background: var(--surface-2);
     width: 44px;
     height: 64px;
     object-fit: cover;

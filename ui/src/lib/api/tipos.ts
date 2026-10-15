@@ -422,6 +422,41 @@ export interface RespuestaAsistente {
   proveedor: string;
   /** Los libros citados como [[libro:ID]], para mostrarlos como fichas. */
   libros: LibroApi[];
+  /** Libros de internet citados como [[web:REF]] (no están en la tienda). */
+  externos: { referencia: string; resultado: ResultadoLinea }[];
+  /** Propuestas de cambio: tarjetas para confirmar. */
+  acciones: AccionAsistente[];
+}
+
+export interface PropuestaAsistente {
+  accion: { tipo: 'encargo' | 'estado_encargo' | 'stock' | 'editar_libro' | 'libro_nuevo'; [k: string]: unknown };
+  titulo: string;
+  explicacion: string[];
+  libroId: number | null;
+  encargoId: number | null;
+  pideCliente: boolean;
+  clienteSugerido: string;
+  pidePrecio: boolean;
+  portadaUrl: string | null;
+}
+
+export interface AccionAsistente {
+  id: string;
+  propuesta: PropuestaAsistente;
+  libro: LibroApi | null;
+}
+
+export interface ExtraConfirmacion {
+  clienteId?: number | null;
+  clienteNuevo?: { nombre: string; telefono: string } | null;
+  precioSoles?: number | null;
+  stock?: number | null;
+}
+
+export interface Confirmado {
+  mensaje: string;
+  /** Adónde llevar para revisarlo: «encargo:12», «libro:7». */
+  ir: string | null;
 }
 
 export interface ProveedorIa {

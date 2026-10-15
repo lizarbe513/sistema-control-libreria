@@ -434,6 +434,57 @@ ejecuta con los permisos de quien pregunta:
   - la Dueña recibe ventas y la vendedora no recibe herramientas de dinero;
   - ningún dato de cliente llega a la IA.
 
+### La bibliotecaria virtual: internet y acciones con confirmación
+
+**Libros que la tienda no tiene:**
+- Si se piden explícitamente, o el inventario no tiene nada que encaje, la IA propone títulos y los verifica con
+  `buscar_en_internet`, el mismo buscador de libros de la app.
+- Corre en la app sin el candado, porque va por la red. Cada resultado queda en memoria con una referencia `wN` y la IA
+  lo cita como `[[web:wN]]`.
+- En el chat sale una tarjeta con portada, datos, «No está en la tienda» y **«Encargar»**. «Encargar» abre el
+  formulario del encargo con ese libro ya elegido (`Precarga.resultado`): solo falta el cliente.
+- Si el ISBN ya está en la tienda, se cita como libro de la tienda.
+
+**Agente** (`crates/core/src/agente.rs`):
+- **Lo que puede proponer:** `proponer_encargo`, `proponer_estado_encargo` (pedido / llegó), `proponer_stock`,
+  `proponer_editar_libro` y `proponer_libro_nuevo`.
+- **Ninguna modifica nada.** Validan los datos y los permisos de quien pregunta y arman una explicación hecha por la app:
+  qué se hará, sobre qué libro o encargo, y el antes → después.
+- A un vendedor sin permiso para editar libros solo se le ofrecen encargos.
+
+**Propuestas y confirmación:**
+- La propuesta queda en memoria (`asistente::Memoria`): es de esa persona, vence a los 30 minutos y se usa una sola vez.
+- La IA cita `[[accion:pN]]` y en el chat aparece la tarjeta: explicación, **Confirmar** y «No, gracias».
+- `asistente_confirmar` la ejecuta con **los mismos comandos de siempre** (permisos idénticos), también desde el
+  celular. Después muestra «Ver encargo» / «Abrir el libro» y deja una nota en la conversación, para que la IA sepa que
+  se hizo.
+
+**Clientes y privacidad:**
+- Los encargos son siempre de un cliente. La IA pregunta para quién es, y el cliente **se elige en la tarjeta**:
+  registrado (se busca) o nuevo (nombre y celular). Ese dato nunca va a la IA; el e2e lo verifica.
+
+**Nada de eliminar:**
+- No hay herramientas para dar de baja, cancelar ni borrar.
+- La IA explica dónde se hace y da un enlace `[[ir:…]]`: `libro:ID` abre su edición, `encargo:ID` resalta el encargo,
+  y también Ajustes → Usuarias o Categorías.
+- Los destinos desconocidos se borran.
+
+**Probado:**
+- `cargo test`:
+  - validación y explicación de cada propuesta (permisos, stock negativo, estados, costo solo para la Dueña, ISBN
+    repetido);
+  - que proponer no cambia la base;
+  - los destinos de enlaces;
+  - las citas inventadas de `web`, `accion` e `ir`;
+  - que no hay herramientas para eliminar.
+- e2e con el servidor de IA falso y la búsqueda real en internet:
+  - tarjetas de internet con «Encargar»;
+  - encargo con cliente nuevo elegido en la tarjeta; confirmar dos veces no lo duplica; «Ver encargo» lo resalta;
+  - stock +5 al confirmar y nada con «No, gracias»;
+  - «dar de baja» solo da el enlace, que abre la edición;
+  - la vendedora sin permiso no recibe `proponer_stock`;
+  - ningún dato de cliente llega a la IA.
+
 ## Estado de los hitos
 
 | Hito | Contenido | Estado |
@@ -445,7 +496,7 @@ ejecuta con los permisos de quien pregunta:
 | 5. Reportes | Por período, más vendidos, categorías, ganancia, cuadre de caja, libros sin movimiento, exportar CSV | ✅ |
 | 6. Respaldos y configuración | Respaldo automático y manual con carpeta externa, restaurar, cambiar la contraseña maestra, «olvidé mi PIN» | ✅ |
 | 7. Celular | Servidor LAN (HTTPS), vinculación por QR, guardar libros por ISBN, título leído con la cámara o escrito, app Android inmersiva con «atrás» y deslizar | ✅ |
-| 8. Asistente IA | Gemini + Groq, herramientas sobre el inventario, encargos y reportes (dinero solo para la Dueña), fichas de libros, sin datos de clientes | Listo; falta probarlo con claves reales |
+| 8. Asistente IA | Bibliotecaria virtual: Gemini + Groq, herramientas sobre inventario, encargos y reportes (dinero solo para la Dueña), recomendaciones de internet con «Encargar», acciones con confirmación (sin eliminar), sin datos de clientes | ✅ (probado con claves reales); acciones e internet: falta probarlas en la tienda |
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 
 ## Cómo se probó (hitos 1 a 6)

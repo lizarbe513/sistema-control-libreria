@@ -2,6 +2,8 @@ import type { Tienda } from '../tienda/modelo';
 import type {
   CategoriaApi,
   MensajeChat,
+  Confirmado,
+  ExtraConfirmacion,
   ProveedorIa,
   RespuestaAsistente,
   Cliente,
@@ -142,6 +144,9 @@ export interface Api {
   asistenteGuardarConfig(proveedor: string, clave: string | null, modelo: string | null): Promise<ProveedorIa[]>;
   /** Prueba la clave (la guardada, o una nueva sin guardarla) y devuelve los modelos disponibles. */
   asistenteProbar(proveedor: string, clave: string | null): Promise<string[]>;
+  /** Ejecuta una propuesta de la asistente (con los permisos de quien confirma). */
+  asistenteConfirmar(id: string, extra: ExtraConfirmacion): Promise<Confirmado>;
+  asistenteDescartar(id: string): Promise<void>;
   /** Pide dónde guardar y escribe el CSV. Devuelve la ruta (o null si se cancela). */
   exportarReporte(tipo: TipoCsv, c: ConsultaReporte, nombreSugerido: string): Promise<string | null>;
 

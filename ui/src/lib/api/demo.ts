@@ -9,6 +9,7 @@ import type { Api } from './contrato';
 import type {
   CategoriaApi,
   MensajeChat,
+  Confirmado,
   ProveedorIa,
   RespuestaAsistente,
   Cliente,
@@ -1121,7 +1122,7 @@ export class ApiDemo implements Api {
     const texto = libros.length
       ? `Esto es una demostración (sin IA). Encontré en la tienda:\n${libros.map((l) => `- [[libro:${l.id}]]`).join('\n')}`
       : 'Esto es una demostración (sin IA). En la app real, el asistente responde con los datos de tu tienda.';
-    return { texto, proveedor: 'Demostración', libros };
+    return { texto, proveedor: 'Demostración', libros, externos: [], acciones: [] };
   }
 
   async asistenteConfig() {
@@ -1137,6 +1138,12 @@ export class ApiDemo implements Api {
     if (modelo) p.modelo = modelo;
     return structuredClone(this.iaDemo);
   }
+
+  async asistenteConfirmar(): Promise<Confirmado> {
+    throw new Error('En la demostración la asistente no hace cambios');
+  }
+
+  async asistenteDescartar() {}
 
   async asistenteProbar(): Promise<string[]> {
     throw new Error('En la demostración no hay conexión con la IA');

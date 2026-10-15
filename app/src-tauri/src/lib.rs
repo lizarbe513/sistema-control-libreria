@@ -87,6 +87,7 @@ fn escritorio() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(Estado(Mutex::new(Fase::SinConfigurar)))
+        .manage(asistente::Memoria::default())
         .setup(|app| {
             // abre sola la carpeta recordada si el llavero tiene la llave
             let fase = estado::fase_inicial(app.handle());
@@ -114,6 +115,8 @@ fn escritorio() {
             asistente::asistente_config,
             asistente::asistente_guardar_config,
             asistente::asistente_probar,
+            asistente::asistente_confirmar,
+            asistente::asistente_descartar,
             inventario::categorias,
             inventario::categoria_crear,
             inventario::categoria_editar,

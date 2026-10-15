@@ -89,7 +89,7 @@
 
   {#if esDuena()}
     <section class="vidrio bloque">
-      <h2 class="titulo-seccion">Usuarias y usuarios</h2>
+      <h2 class="titulo-seccion" id="ajustes-usuarios">Usuarias y usuarios</h2>
       <p class="atenuado">Cada persona entra con su PIN. Los vendedores no ven costos ni reportes.</p>
       <Usuarias />
       <label class="interruptor">
@@ -111,7 +111,7 @@
 
     {#if !api.esCelular}
     <section class="vidrio bloque">
-      <h2 class="titulo-seccion">Asistente IA</h2>
+      <h2 class="titulo-seccion" id="ajustes-asistente">Asistente IA</h2>
       <AsistenteConfig />
     </section>
     {/if}
@@ -131,7 +131,7 @@
     {/if}
 
     <section class="vidrio bloque">
-      <h2 class="titulo-seccion">Categorías</h2>
+      <h2 class="titulo-seccion" id="ajustes-categorias">Categorías</h2>
       <Categorias />
     </section>
 

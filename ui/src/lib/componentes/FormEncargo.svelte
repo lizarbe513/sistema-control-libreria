@@ -39,10 +39,13 @@
 
   // ── libro ──
   // svelte-ignore state_referenced_locally
-  let modoLibro = $state<'inventario' | 'internet' | 'mano'>(precarga.libroId || !precarga.titulo ? 'inventario' : 'internet');
+  let modoLibro = $state<'inventario' | 'internet' | 'mano'>(precarga.resultado ? 'internet' : precarga.libroId || !precarga.titulo ? 'inventario' : 'internet');
   /** Libro elegido en la búsqueda en internet (aún no está en el inventario). */
   let hallado = $state<ResultadoLinea | null>(null);
   let yaLoTenia = $state<Libro | null>(null);
+  // recomendado por la asistente: el libro de internet ya viene elegido (solo falta el cliente)
+  // svelte-ignore state_referenced_locally
+  if (precarga.resultado) queueMicrotask(() => precarga.resultado && elegirEnLinea(precarga.resultado));
 
   async function elegirEnLinea(r: ResultadoLinea) {
     hallado = r;

@@ -1,5 +1,5 @@
 // Encargos en la interfaz: el formulario precargado, la carta de «¡llegó!» y un contador de cambios.
-import { api, type Encargo, type EstadoEncargo } from './api';
+import { api, type Encargo, type EstadoEncargo, type ResultadoLinea } from './api';
 import { app } from './estado.svelte';
 
 export interface Precarga {
@@ -7,6 +7,8 @@ export interface Precarga {
   titulo?: string;
   autor?: string;
   libroId?: number | null;
+  /** Un libro encontrado en internet (p. ej. recomendado por la asistente): queda ya elegido. */
+  resultado?: ResultadoLinea | null;
 }
 
 export interface Carta {
@@ -16,7 +18,14 @@ export interface Carta {
   encargos: Encargo[];
 }
 
-export const encargosUI = $state({ version: 0, nuevo: null as Precarga | null, carta: null as Carta | null, pestana: null as 'tablero' | 'clientes' | null });
+export const encargosUI = $state({
+  version: 0,
+  nuevo: null as Precarga | null,
+  carta: null as Carta | null,
+  pestana: null as 'tablero' | 'clientes' | null,
+  /** Encargo a resaltar al abrir el tablero (enlace «Ver encargo» de la asistente). */
+  resaltar: null as number | null,
+});
 
 export function encargosCambio() {
   encargosUI.version++;

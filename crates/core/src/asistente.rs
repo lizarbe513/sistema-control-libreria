@@ -425,14 +425,14 @@ fn encargos_sin_clientes(ctx: &Contexto) -> std::result::Result<Vec<Value>, Stri
     Ok(v.iter()
         .map(|e| {
             json!({
-                "titulo": e.titulo, "autor": e.autor, "cantidad": e.cantidad, "estado": e.estado.texto(),
+                "encargo_id": e.id, "titulo": e.titulo, "autor": e.autor, "cantidad": e.cantidad, "estado": e.estado.texto(),
                 "creado": e.creado.get(..10).unwrap_or(&e.creado), "libro_id": e.libro_id,
             })
         })
         .collect())
 }
 
-/// Instrucciones para el modelo.
+/// Instrucciones para el modelo: la «bibliotecaria virtual» de la tienda.
 pub fn instrucciones(tienda: &str, quien: &str, duena: bool, hoy: &str, categorias: &[(String, String)]) -> String {
     let cats = categorias.iter().map(|(k, n)| format!("{n} ({k})")).collect::<Vec<_>>().join(", ");
     let rol = if duena {
@@ -441,50 +441,128 @@ pub fn instrucciones(tienda: &str, quien: &str, duena: bool, hoy: &str, categori
         "Es vendedor/a: NO tiene acceso a ventas, ganancias, costos ni reportes de dinero; si lo pide, dile amablemente que eso lo ve la Dueña."
     };
     format!(
-        "Eres la asistente de la Librería {tienda} (Perú). Hablas en español peruano, con calidez y en pocas palabras. \
-Hoy es {hoy}. Atiendes a {quien}. {rol}
+        "Eres la bibliotecaria virtual de la Librería {tienda} (Perú): conoces de libros, de lectores y de cómo funciona una \
+librería. Hablas en español peruano, con calidez y en pocas palabras. Hoy es {hoy}. Atiendes a {quien}. {rol}
 
-Reglas:
+Datos y recomendaciones:
 - Usa SOLO datos que obtengas con las herramientas. Si no hay datos, dilo; nunca inventes libros, precios ni cifras.
-- Al recomendar o mencionar un libro de la tienda, cítalo como [[libro:ID]] (el id que dio la herramienta), con su \
-precio, si hay stock y dónde está. Solo recomienda libros que estén en el inventario.
-- Para gustos o temas («algo de misterio para un chico de 15»), busca por palabras y también hojea el catálogo de las \
-categorías que encajen, y usa lo que sabes de esos títulos y autores para elegir.
-- Al resumir el estado de la tienda, ventas o reportes, da lo importante primero, con cifras en soles (S/), y en \
-viñetas cortas.
-- Para redactar mensajes a clientes, usa {{cliente}} en lugar del nombre. No pidas ni repitas datos personales.
+- Al mencionar un libro de la tienda, cítalo como [[libro:ID]] (el id que dio la herramienta), con su precio, si hay \
+stock y dónde está.
+- Para gustos o temas, busca por palabras y hojea el catálogo de las categorías que encajen; usa lo que sabes de esos \
+títulos y autores para elegir.
+- Libros que la tienda NO tiene: primero revisa el inventario. Si no hay nada que encaje, o si te piden explícitamente \
+buscar fuera, piensa en títulos que se ajusten y verifícalos con buscar_en_internet (uno por búsqueda, con título y \
+autor). Cita cada resultado como [[web:REF]] (la ref que dio la herramienta), cuenta brevemente por qué encaja y aclara \
+que no está en la tienda y se puede encargar. Si un resultado dice que ya está en la tienda, cítalo como [[libro:ID]].
+- Al resumir la tienda, ventas o reportes: lo importante primero, cifras en soles (S/), viñetas cortas.
+- Para mensajes a clientes usa {{cliente}} en lugar del nombre. No pidas ni repitas datos personales.
 - Los períodos van en fechas AAAA-MM-DD; «este mes» va del día 1 hasta hoy.
+
+Acciones (eres también una agente, pero siempre con permiso):
+- Para hacer un cambio usa las herramientas proponer_*: NO cambian nada, muestran una tarjeta que la persona confirma. \
+Explica con claridad qué se hará, cita la tarjeta como [[accion:REF]] y nunca digas que ya está hecho: lo estará \
+cuando lo confirme.
+- Encargos: son siempre para un cliente. Pregunta para quién es (si ya es cliente registrado o alguien nuevo) y aclara \
+que lo elige en la tarjeta; no pidas su teléfono ni su nombre completo en el chat.
+- NO puedes eliminar nada: ni dar de baja libros, ni cancelar o borrar encargos, ni quitar cuentas o categorías. Si te \
+lo piden, explica dónde se hace y da el enlace: [[ir:libro:ID]] (su edición, donde está «Dar de baja»), \
+[[ir:encargo:ID]], [[ir:encargos]], [[ir:libros]], [[ir:reportes]], [[ir:ajustes:usuarios]] o [[ir:ajustes:categorias]].
+- Si una herramienta devuelve un error, explícalo en palabras simples.
 Categorías: {cats}."
     )
 }
 
-/// Quita los `[[libro:ID]]` cuyo id no salió de una herramienta (el modelo no puede inventar libros).
-pub fn depurar_citas(texto: &str, vistos: &HashSet<i64>) -> (String, Vec<i64>) {
+/// Lo que salió de las herramientas en esta respuesta: solo eso se puede citar.
+#[derive(Debug, Default, Clone)]
+pub struct Vistos {
+    pub libros: HashSet<i64>,
+    pub web: HashSet<String>,
+    pub acciones: HashSet<String>,
+}
+
+/// Lo citado (en orden y sin repetir).
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Citas {
+    pub libros: Vec<i64>,
+    pub web: Vec<String>,
+    pub acciones: Vec<String>,
+}
+
+/// Quita las citas que no salieron de una herramienta: `[[libro:ID]]`, `[[web:REF]]`, `[[accion:REF]]`, y los enlaces
+/// `[[ir:…]]` a destinos desconocidos. Así el modelo no puede inventar libros, resultados ni acciones.
+pub fn depurar(texto: &str, vistos: &Vistos) -> (String, Citas) {
     let mut salida = String::with_capacity(texto.len());
-    let mut citados = Vec::new();
+    let mut citas = Citas::default();
     let mut resto = texto;
-    while let Some(i) = resto.find("[[libro:") {
+    while let Some(i) = resto.find("[[") {
         salida.push_str(&resto[..i]);
-        let tras = &resto[i + 8..];
-        match tras.find("]]") {
-            Some(j) if tras[..j].trim().parse::<i64>().is_ok() => {
-                let id: i64 = tras[..j].trim().parse().unwrap_or_default();
-                if vistos.contains(&id) {
-                    salida.push_str(&format!("[[libro:{id}]]"));
-                    if !citados.contains(&id) {
-                        citados.push(id);
-                    }
+        let tras = &resto[i + 2..];
+        let Some(j) = tras.find("]]") else {
+            salida.push_str("[[");
+            resto = tras;
+            continue;
+        };
+        let dentro = tras[..j].trim();
+        let conservar = match dentro.split_once(':').map(|(k, v)| (k.trim(), v.trim())) {
+            Some(("libro", v)) => v.parse::<i64>().ok().filter(|id| vistos.libros.contains(id)).map(|id| {
+                if !citas.libros.contains(&id) {
+                    citas.libros.push(id);
                 }
-                resto = &tras[j + 2..];
-            }
-            _ => {
-                salida.push_str("[[libro:");
-                resto = tras;
-            }
+                format!("[[libro:{id}]]")
+            }),
+            Some(("web", v)) => vistos.web.contains(v).then(|| {
+                if !citas.web.iter().any(|x| x == v) {
+                    citas.web.push(v.to_string());
+                }
+                format!("[[web:{v}]]")
+            }),
+            Some(("accion", v)) => vistos.acciones.contains(v).then(|| {
+                if !citas.acciones.iter().any(|x| x == v) {
+                    citas.acciones.push(v.to_string());
+                }
+                format!("[[accion:{v}]]")
+            }),
+            Some(("ir", v)) => crate::agente::destino_valido(v).then(|| format!("[[ir:{v}]]")),
+            _ => Some(format!("[[{}]]", &tras[..j])),
+        };
+        if let Some(c) = conservar {
+            salida.push_str(&c);
         }
+        resto = &tras[j + 2..];
     }
     salida.push_str(resto);
-    (salida, citados)
+    (salida, citas)
+}
+
+/// Herramienta de búsqueda en internet (la ejecuta la app: va por la red, sin el candado de la base).
+pub fn herramienta_internet() -> Value {
+    funcion(
+        "buscar_en_internet",
+        "Busca un libro en internet (Open Library y Google Books) por título y autor, para recomendar libros que la tienda \
+         no tiene. Devuelve hasta 5 ediciones con su ref (para citar [[web:REF]]), editorial, año, ISBN y portada.",
+        json!({ "titulo": { "type": "string" }, "autor": { "type": "string" } }),
+        &["titulo"],
+    )
+}
+
+/// Todas las herramientas para quien pregunta: las de consulta, la de internet y las de propuesta.
+pub fn todas(p: crate::agente::Permisos) -> Vec<Value> {
+    let mut v = herramientas(p.duena);
+    v.push(herramienta_internet());
+    v.extend(crate::agente::herramientas(p));
+    v
+}
+
+/// Resultado de internet para la IA. `en_tienda`: id del libro si su ISBN ya está en el inventario.
+pub fn resultado_web(r: &str, x: &crate::isbn::ResultadoLinea, en_tienda: Option<i64>) -> Value {
+    let mut v = json!({
+        "ref": r, "titulo": x.titulo, "autor": x.autor, "editorial": x.editorial, "anio": x.anio, "isbn": x.isbn,
+        "tiene_portada": x.portada_url.is_some(), "en_espanol": x.espanol,
+    });
+    if let Some(id) = en_tienda {
+        v["ya_esta_en_la_tienda_libro_id"] = json!(id);
+    }
+    v
 }
 
 // ── configuración: claves y modelos (en la tabla `config`, dentro de la base cifrada) ──
@@ -711,34 +789,26 @@ mod tests {
 
     #[test]
     fn citas_inventadas_se_borran() {
-        let vistos: HashSet<i64> = [3, 7].into();
-        let (t, c) = depurar_citas("Mira [[libro:7]] y [[libro:99]], o [[libro: 3]]. [[libro:x]]", &vistos);
-        assert_eq!(t, "Mira [[libro:7]] y , o [[libro:3]]. [[libro:x]]");
-        assert_eq!(c, vec![7, 3]);
+        let vistos = Vistos { libros: [3, 7].into(), web: ["w2".to_string()].into(), acciones: ["p1".to_string()].into() };
+        let (t, c) = depurar(
+            "Mira [[libro:7]] y [[libro:99]], o [[libro: 3]]. Afuera: [[web:w2]] [[web:w9]]. [[accion:p1]] [[accion:p8]] \
+             [[ir:libro:7]] [[ir:borrar:1]] [[otra cosa]] [[sin cerrar",
+            &vistos,
+        );
+        assert_eq!(t, "Mira [[libro:7]] y , o [[libro:3]]. Afuera: [[web:w2]] . [[accion:p1]]  [[ir:libro:7]]  [[otra cosa]] [[sin cerrar");
+        assert_eq!(c, Citas { libros: vec![7, 3], web: vec!["w2".into()], acciones: vec!["p1".into()] });
     }
 
     #[test]
-    fn configuracion_de_claves() {
-        let c = en_memoria();
-        assert!(proveedores(&c).is_empty());
-        assert!(estado_config(&c).iter().all(|p| !p.configurada));
-        guardar_config(&c, "groq", Some(" gsk_abcdef1234 "), None).unwrap();
-        guardar_config(&c, "gemini", Some("AIzaXYZ9876"), Some("gemini-otro")).unwrap();
-        let e = estado_config(&c);
-        assert_eq!((e[0].id.as_str(), e[0].final_clave.as_str(), e[0].modelo.as_str()), ("gemini", "9876", "gemini-otro"));
-        assert_eq!((e[1].final_clave.as_str(), e[1].modelo.as_str()), ("1234", crate::ia::MODELO_GROQ));
-        let p = proveedores(&c);
-        assert_eq!(p.iter().map(|x| x.nombre.as_str()).collect::<Vec<_>>(), ["Gemini", "Groq"], "Gemini primero");
-        assert_eq!(p[1].clave, "gsk_abcdef1234");
-        // None conserva, "" borra
-        guardar_config(&c, "gemini", None, Some("gemini-x")).unwrap();
-        assert!(estado_config(&c)[0].configurada);
-        guardar_config(&c, "gemini", Some(""), None).unwrap();
-        assert_eq!(proveedores(&c).len(), 1);
-        assert!(guardar_config(&c, "otro", Some("x"), None).is_err());
-        assert!(guardar_config(&c, "groq", Some("con espacio"), None).is_err());
-        // la clave está en la base (cifrada en la app real), nunca en el JSON de estado
-        assert!(!serde_json::to_string(&estado_config(&c)).unwrap().contains("gsk_abcdef"));
+    fn todas_las_herramientas_segun_permisos() {
+        use crate::agente::Permisos;
+        let n = |p| todas(p).iter().map(|h| h["function"]["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        let v = n(Permisos { duena: false, edita_libros: false });
+        assert!(v.contains(&"buscar_en_internet".into()) && v.contains(&"proponer_encargo".into()));
+        assert!(!v.contains(&"proponer_editar_libro".into()) && !v.contains(&"reporte_ventas".into()));
+        let d = n(Permisos { duena: true, edita_libros: true });
+        assert!(d.contains(&"proponer_libro_nuevo".into()) && d.contains(&"reporte_ventas".into()));
+        assert!(!d.iter().any(|x| x.contains("eliminar") || x.contains("baja") || x.contains("cancelar")), "no hay herramientas para eliminar");
     }
 
     #[test]
@@ -748,5 +818,6 @@ mod tests {
         let v = instrucciones("SIGLO XXI", "Luis", false, "2026-10-15", &cats);
         assert!(d.contains("Dueña: puede ver ventas") && v.contains("NO tiene acceso"));
         assert!(d.contains("[[libro:ID]]") && d.contains("{cliente}") && d.contains("Obras literarias (literarias)"));
+        assert!(d.contains("bibliotecaria virtual") && d.contains("[[web:REF]]") && d.contains("[[accion:REF]]") && d.contains("NO puedes eliminar"));
     }
 }

@@ -1,6 +1,7 @@
 //! Núcleo de la Librería SIGLO XXI: base cifrada, dominio y reglas de negocio.
 //! No depende de Tauri, así se prueba con `cargo test` y lo reutilizan la app y el servidor LAN.
 
+pub mod agente;
 pub mod asistente;
 pub mod busqueda;
 pub mod carpeta;
