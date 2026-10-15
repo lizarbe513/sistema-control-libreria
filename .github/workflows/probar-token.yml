@@ -14,5 +14,5 @@ jobs:
           set -euo pipefail
           [ -n "$GH_TOKEN" ] || { echo "::error::VERSIONES_TOKEN está vacío"; exit 1; }
           gh release create prueba-token --draft -R lizarbe513/libreria-siglo-xxi-versiones --title "prueba" --notes "borrar"
-          gh release delete prueba-token -R lizarbe513/libreria-siglo-xxi-versiones -y --cleanup-tag
+          gh release delete prueba-token -R lizarbe513/libreria-siglo-xxi-versiones -y
           echo "El token puede publicar en el repo de versiones ✓"
