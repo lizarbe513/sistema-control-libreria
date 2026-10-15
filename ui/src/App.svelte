@@ -23,6 +23,8 @@
   import Bienvenida from './lib/acceso/Bienvenida.svelte';
   import Desbloquear from './lib/acceso/Desbloquear.svelte';
   import Entrar from './lib/acceso/Entrar.svelte';
+  import SinConexion from './lib/acceso/SinConexion.svelte';
+  import Vincular from './lib/acceso/Vincular.svelte';
   import { arrancar, sesion } from './lib/sesion.svelte';
 
   let ancho = $state(window.innerWidth);
@@ -74,6 +76,10 @@
   <Bienvenida />
 {:else if sesion.estado?.fase === 'desbloquear'}
   <Desbloquear />
+{:else if sesion.estado?.fase === 'vincular'}
+  <Vincular />
+{:else if sesion.estado?.fase === 'sinConexion'}
+  <SinConexion />
 {:else if sesion.estado?.fase === 'entrar' || !sesion.usuaria}
   <Entrar />
 {:else if movil}

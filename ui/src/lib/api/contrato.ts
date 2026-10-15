@@ -36,6 +36,8 @@ import type {
 /** Lo que la interfaz puede pedirle al backend. Dos implementaciones: Tauri (real) y Demo (navegador). */
 export interface Api {
   readonly esDemo: boolean;
+  /** Es la app del celular: habla con el PC por el WiFi (no tiene base de datos propia). */
+  readonly esCelular: boolean;
   estadoInicial(): Promise<EstadoInicial>;
   configurar(d: DatosConfiguracion): Promise<EstadoInicial>;
   abrirCarpeta(carpeta: string, contrasena: string): Promise<EstadoInicial>;
@@ -149,4 +151,12 @@ export interface Api {
   /** Un código de un solo uso (5 minutos) con su QR, para vincular un celular. */
   codigoCelular(): Promise<CodigoVinculo>;
   desconectarCelular(id: number): Promise<EstadoCelulares>;
+
+  // ── solo en la app del celular ──
+  /** Vincula este celular con el PC: `texto` es lo que lleva el QR (`siglo://vincular?…`). */
+  vincularConQr(texto: string, nombreCelular: string): Promise<EstadoInicial>;
+  /** A mano: dirección del PC (con o sin puerto) y el código de 8 letras. */
+  vincularManual(direccion: string, codigo: string, nombreCelular: string): Promise<EstadoInicial>;
+  /** Olvida el vínculo (para vincular con otro PC). */
+  desvincular(): void;
 }

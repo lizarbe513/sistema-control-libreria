@@ -29,6 +29,14 @@ registrarGuardadoPreferencias((clave, valor) => {
 
 export const esDuena = () => sesion.usuaria?.rol === 'duena';
 
+// El PC desvinculó a este celular: vuelve a la pantalla de vincular.
+if (typeof window !== 'undefined') {
+  window.addEventListener('lan-desvinculado', () => {
+    sesion.usuaria = null;
+    sesion.estado = { fase: 'vincular', carpeta: null, carpetaSugerida: '', tienda: null, usuaria: null, llavero: true };
+  });
+}
+
 export async function arrancar() {
   sesion.cargando = true;
   try {

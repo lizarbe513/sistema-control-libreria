@@ -6,6 +6,7 @@
   import Buscar from '../vistas/Buscar.svelte';
   import Inicio from '../vistas/Inicio.svelte';
   import Pendiente from '../vistas/Pendiente.svelte';
+  import Escanear from '../vistas/Escanear.svelte';
   import Vender from '../vistas/Vender.svelte';
   import Encargos from '../vistas/Encargos.svelte';
   import Reportes from '../vistas/Reportes.svelte';
@@ -30,7 +31,7 @@
       <strong>Hola, {app.usuario} 🌸</strong>
     </div>
     <Radio compacta />
-    <button class="escaner" onclick={() => avisar('📷 En la app, aquí se escanea el ISBN con la cámara')} aria-label="Escanear libro">
+    <button class="escaner" onclick={() => (app.vista = 'escanear')} aria-label="Escanear libro">
       <Icono nombre="camara" tam={22} />
     </button>
   </header>
@@ -48,6 +49,8 @@
       <Reportes movil />
     {:else if app.vista === 'ajustes'}
       <Ajustes />
+    {:else if app.vista === 'escanear'}
+      <Escanear />
     {:else}
       <Pendiente vista={app.vista} />
     {/if}

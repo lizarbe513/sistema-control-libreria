@@ -97,30 +97,38 @@
       </label>
     </section>
 
+    {#if !api.esCelular}
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Respaldos</h2>
       <Respaldos />
     </section>
+    {/if}
 
+    {#if !api.esCelular}
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Celulares</h2>
       <Celulares />
     </section>
+    {/if}
 
+    {#if !api.esCelular}
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Seguridad: contraseña maestra</h2>
       <CambiarContrasena />
     </section>
+    {/if}
 
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Tipos de cliente y descuentos</h2>
       <TiposCliente />
     </section>
 
+    {#if !api.esCelular}
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Métodos de pago</h2>
       <MetodosPago />
     </section>
+    {/if}
 
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Mensaje de WhatsApp para encargos</h2>

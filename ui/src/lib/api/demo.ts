@@ -151,6 +151,7 @@ const espera = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
 export class ApiDemo implements Api {
   readonly esDemo = true;
+  readonly esCelular = false;
   private d: Datos;
   private sesion: UsuariaDemo | null = null;
   private fallos = new Map<number, { n: number; hasta: number }>();
@@ -1282,4 +1283,12 @@ export class ApiDemo implements Api {
     this.persistir();
     return this.estadoCelulares();
   }
+
+  async vincularConQr(): Promise<EstadoInicial> {
+    throw new Error('La demostración no se vincula con un PC');
+  }
+  async vincularManual(): Promise<EstadoInicial> {
+    throw new Error('La demostración no se vincula con un PC');
+  }
+  desvincular() {}
 }

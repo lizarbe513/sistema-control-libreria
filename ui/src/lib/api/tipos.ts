@@ -10,7 +10,7 @@ export interface Usuaria {
   preferencias: Record<string, unknown>;
 }
 
-export type Fase = 'configurar' | 'desbloquear' | 'entrar' | 'sesion';
+export type Fase = 'configurar' | 'desbloquear' | 'entrar' | 'sesion' | 'vincular' | 'sinConexion';
 
 export interface EstadoInicial {
   fase: Fase;
@@ -20,6 +20,8 @@ export interface EstadoInicial {
   usuaria: Usuaria | null;
   /** false si el equipo no tiene llavero: pedirá la contraseña maestra al abrir. */
   llavero: boolean;
+  /** Solo en el celular: por qué no se pudo conectar con el PC. */
+  error?: string;
 }
 
 export interface DatosConfiguracion {

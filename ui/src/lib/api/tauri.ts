@@ -39,9 +39,10 @@ import type {
 /** Backend real: comandos de Rust por IPC. Los errores llegan como texto en español. */
 export class ApiTauri implements Api {
   readonly esDemo = false;
+  readonly esCelular: boolean = false;
   private rutaPortadas = '';
 
-  private llamar<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  protected llamar<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
     return invoke<T>(cmd, args).catch((e: unknown) => {
       throw new Error(typeof e === 'string' ? e : e instanceof Error ? e.message : 'Ocurrió un error inesperado');
     });
@@ -284,4 +285,11 @@ export class ApiTauri implements Api {
   desconectarCelular(id: number) {
     return this.llamar<EstadoCelulares>('celulares_desconectar', { id });
   }
+  vincularConQr(_texto: string, _nombre: string): Promise<EstadoInicial> {
+    return Promise.reject(new Error('Esto solo se usa en la app del celular'));
+  }
+  vincularManual(_direccion: string, _codigo: string, _nombre: string): Promise<EstadoInicial> {
+    return Promise.reject(new Error('Esto solo se usa en la app del celular'));
+  }
+  desvincular() {}
 }
