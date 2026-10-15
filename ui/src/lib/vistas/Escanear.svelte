@@ -19,6 +19,7 @@
   import { esDuena } from '../sesion.svelte';
   import BuscadorLinea from '../componentes/BuscadorLinea.svelte';
   import LectorTitulo from '../componentes/LectorTitulo.svelte';
+  import NuevaCategoria from '../componentes/NuevaCategoria.svelte';
   import SelectorUbicacion from '../componentes/SelectorUbicacion.svelte';
 
   type Fase = 'apuntando' | 'buscando' | 'titulo' | 'mano' | 'existente' | 'nuevo';
@@ -412,10 +413,10 @@
           {#if esDuena()}<label>Costo (S/)<input bind:value={costo} inputmode="decimal" placeholder="20.00" aria-label="Costo" /></label>{/if}
           <label>Stock<input bind:value={stock} inputmode="numeric" aria-label="Stock" /></label>
         </div>
-        <label>
-          Categoría
+        <div class="campo">
+          <span class="con-accion">Categoría <NuevaCategoria onCreada={(k) => (categoria = k)} /></span>
           <select bind:value={categoria} aria-label="Categoría">{#each inventario.categorias as c (c.clave)}<option value={c.clave}>{c.nombre}</option>{/each}</select>
-        </label>
+        </div>
         <div class="campo">
           <span>Ubicación <small class="atenuado">(se recuerda para el siguiente)</small></span>
           <SelectorUbicacion valor={ubicacion} onCambio={fijarUbicacion} mapa={false} />
@@ -620,6 +621,13 @@
     font-size: 12px;
     font-weight: 700;
     color: var(--muted);
+  }
+  .con-accion {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
   }
   .campo {
     display: flex;

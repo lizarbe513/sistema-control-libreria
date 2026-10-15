@@ -165,6 +165,94 @@ pub fn categorias(conn: &Connection) -> Result<Vec<Categoria>> {
     Ok(v)
 }
 
+/// Colores pastel y patrones para las categorías nuevas: se van rotando para que cada una se distinga.
+const PALETA: [&str; 10] = ["#E9E3FB", "#DDEFFB", "#FCEFC7", "#FBD3DE", "#FDE2D0", "#DDF3E4", "#E3F4F4", "#F6E1F5", "#EFEBD8", "#E0E7FF"];
+const PATRONES: [&str; 7] = ["marco", "dorado", "rayos", "confeti", "andino", "cuadricula", "ondas"];
+
+fn obtener_categoria(conn: &Connection, clave: &str) -> Result<Categoria> {
+    conn.query_row("SELECT clave, nombre, color, patron FROM categorias WHERE clave = ?1", [clave], |f| {
+        Ok(Categoria { clave: f.get(0)?, nombre: f.get(1)?, color: f.get(2)?, patron: f.get(3)? })
+    })
+    .optional()?
+    .ok_or_else(|| Error::NoEncontrado("esa categoría".into()))
+}
+
+fn validar_nombre_categoria(conn: &Connection, nombre: &str, excepto: Option<&str>) -> Result<()> {
+    if nombre.is_empty() || nombre.chars().count() > 40 {
+        return invalido("Escribe el nombre de la categoría (hasta 40 letras)");
+    }
+    let repetida: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM categorias WHERE lower(nombre) = lower(?1) AND clave IS NOT ?2)",
+        params![nombre, excepto],
+        |f| f.get(0),
+    )?;
+    if repetida {
+        return invalido(format!("Ya existe la categoría «{nombre}»"));
+    }
+    Ok(())
+}
+
+/// Categoría nueva: la clave sale del nombre; el color y el patrón se eligen solos (rotando la paleta).
+pub fn crear_categoria(conn: &Connection, nombre: &str) -> Result<Categoria> {
+    let nombre = nombre.trim();
+    validar_nombre_categoria(conn, nombre, None)?;
+    let base = crate::busqueda::normalizar(nombre).split_whitespace().collect::<Vec<_>>().join("-");
+    let base = if base.is_empty() { "categoria".to_string() } else { base.chars().take(30).collect() };
+    let mut clave = base.clone();
+    let mut n = 2;
+    while conn.query_row("SELECT EXISTS(SELECT 1 FROM categorias WHERE clave = ?1)", [&clave], |f| f.get::<_, bool>(0))? {
+        clave = format!("{base}-{n}");
+        n += 1;
+    }
+    let (cuantas, orden): (i64, i64) =
+        conn.query_row("SELECT count(*), coalesce(max(orden), 0) FROM categorias", [], |f| Ok((f.get(0)?, f.get(1)?)))?;
+    let i = cuantas as usize;
+    conn.execute(
+        "INSERT INTO categorias (clave, nombre, color, patron, orden) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![clave, nombre, PALETA[i % PALETA.len()], PATRONES[i % PATRONES.len()], orden + 1],
+    )?;
+    obtener_categoria(conn, &clave)
+}
+
+/// Cambia el nombre y el color (un color `#RRGGBB`). La clave no cambia: los libros siguen apuntando a ella.
+pub fn editar_categoria(conn: &Connection, clave: &str, nombre: &str, color: &str) -> Result<Categoria> {
+    let nombre = nombre.trim();
+    obtener_categoria(conn, clave)?;
+    validar_nombre_categoria(conn, nombre, Some(clave))?;
+    if !(color.len() == 7 && color.starts_with('#') && color[1..].chars().all(|c| c.is_ascii_hexdigit())) {
+        return invalido("El color no es válido");
+    }
+    conn.execute("UPDATE categorias SET nombre = ?2, color = ?3 WHERE clave = ?1", params![clave, nombre, color])?;
+    obtener_categoria(conn, clave)
+}
+
+/// Solo se elimina una categoría sin libros (ni dados de baja: su historial la sigue nombrando).
+pub fn eliminar_categoria(conn: &Connection, clave: &str) -> Result<()> {
+    obtener_categoria(conn, clave)?;
+    let (activos, total): (i64, i64) = conn.query_row(
+        "SELECT coalesce(sum(l.activo), 0), count(*) FROM libros l JOIN categorias c ON c.id = l.categoria_id WHERE c.clave = ?1",
+        [clave],
+        |f| Ok((f.get(0)?, f.get(1)?)),
+    )?;
+    if activos > 0 {
+        return invalido(format!("Tiene {activos} libro(s): muévelos a otra categoría antes de eliminarla"));
+    }
+    if total > 0 {
+        return invalido("Tiene libros dados de baja en el historial: no se puede eliminar, pero sí renombrar");
+    }
+    conn.execute("DELETE FROM categorias WHERE clave = ?1", [clave])?;
+    Ok(())
+}
+
+/// Cuántos libros activos hay en cada categoría (para Ajustes).
+pub fn libros_por_categoria(conn: &Connection) -> Result<Vec<(String, i64)>> {
+    let mut st = conn.prepare(
+        "SELECT c.clave, count(l.id) FROM categorias c LEFT JOIN libros l ON l.categoria_id = c.id AND l.activo = 1 GROUP BY c.id",
+    )?;
+    let v = st.query_map([], |f| Ok((f.get(0)?, f.get(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(v)
+}
+
 fn validar(conn: &Connection, e: &LibroEntrada) -> Result<(Option<String>, i64)> {
     let titulo = e.titulo.trim();
     if titulo.is_empty() {
@@ -416,6 +504,35 @@ pub fn stock_bajo(conn: &Connection, limite: i64, ver_costo: bool) -> Result<Vec
 pub(crate) mod tests {
     use super::*;
     use crate::db::en_memoria;
+
+    #[test]
+    fn categorias_nuevas() {
+        let mut c = en_memoria();
+        let antes = categorias(&c).unwrap().len();
+        let k = crear_categoria(&c, "  Ciencia Ficción ").unwrap();
+        assert_eq!((k.clave.as_str(), k.nombre.as_str()), ("ciencia-ficcion", "Ciencia Ficción"));
+        assert!(k.color.starts_with('#') && !k.patron.is_empty());
+        assert_eq!(categorias(&c).unwrap().len(), antes + 1);
+        assert_eq!(categorias(&c).unwrap().last().unwrap().clave, "ciencia-ficcion", "va al final");
+        assert!(crear_categoria(&c, "ciencia ficción").is_err(), "nombre repetido");
+        assert!(crear_categoria(&c, " ").is_err());
+        // editar
+        let k = editar_categoria(&c, "ciencia-ficcion", "Sci-fi", "#AABBCC").unwrap();
+        assert_eq!((k.nombre.as_str(), k.color.as_str()), ("Sci-fi", "#AABBCC"));
+        assert!(editar_categoria(&c, "ciencia-ficcion", "Otros", "#AABBCC").is_err(), "choca con otra");
+        assert!(editar_categoria(&c, "ciencia-ficcion", "Sci-fi", "rojo").is_err());
+        // un libro en la categoría nueva impide eliminarla
+        let mut e = entrada("Fundación");
+        e.categoria = "ciencia-ficcion".into();
+        let l = guardar(&mut c, &e, None, true).unwrap();
+        assert_eq!(l.categoria, "ciencia-ficcion");
+        assert!(eliminar_categoria(&c, "ciencia-ficcion").is_err());
+        assert_eq!(libros_por_categoria(&c).unwrap().iter().find(|(k, _)| k == "ciencia-ficcion").unwrap().1, 1);
+        // una vacía, sí
+        crear_categoria(&c, "Revistas").unwrap();
+        eliminar_categoria(&c, "revistas").unwrap();
+        assert!(!categorias(&c).unwrap().iter().any(|k| k.clave == "revistas"));
+    }
 
     pub fn entrada(titulo: &str) -> LibroEntrada {
         LibroEntrada { titulo: titulo.into(), categoria: "literarias".into(), precio_cent: 3500, ..Default::default() }

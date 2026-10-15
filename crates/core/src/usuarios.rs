@@ -65,17 +65,54 @@ const COLUMNAS: &str = "id, nombre, rol, avatar, preferencias";
 
 pub fn crear(conn: &Connection, nombre: &str, rol: Rol, pin: &str) -> Result<Usuaria> {
     let nombre = nombre.trim();
+    validar_nombre(conn, nombre, None)?;
+    validar_pin(pin)?;
+    conn.execute("INSERT INTO usuarios (nombre, rol, pin_hash) VALUES (?1, ?2, ?3)", params![nombre, rol.texto(), hash_pin(pin)?])?;
+    obtener(conn, conn.last_insert_rowid())
+}
+
+fn validar_nombre(conn: &Connection, nombre: &str, excepto: Option<i64>) -> Result<()> {
     if nombre.is_empty() || nombre.chars().count() > 40 {
         return invalido("Escribe un nombre (hasta 40 letras)");
     }
-    validar_pin(pin)?;
-    let repetido: bool =
-        conn.query_row("SELECT EXISTS(SELECT 1 FROM usuarios WHERE activo = 1 AND lower(nombre) = lower(?1))", [nombre], |f| f.get(0))?;
+    let repetido: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM usuarios WHERE activo = 1 AND lower(nombre) = lower(?1) AND id IS NOT ?2)",
+        params![nombre, excepto],
+        |f| f.get(0),
+    )?;
     if repetido {
         return invalido(format!("Ya hay alguien llamado «{nombre}»"));
     }
-    conn.execute("INSERT INTO usuarios (nombre, rol, pin_hash) VALUES (?1, ?2, ?3)", params![nombre, rol.texto(), hash_pin(pin)?])?;
-    obtener(conn, conn.last_insert_rowid())
+    Ok(())
+}
+
+fn duenas_activas(conn: &Connection) -> Result<i64> {
+    Ok(conn.query_row("SELECT count(*) FROM usuarios WHERE activo = 1 AND rol = 'duena'", [], |f| f.get(0))?)
+}
+
+/// Cambia el nombre y el rol. La tienda nunca se queda sin Dueña.
+pub fn editar(conn: &Connection, id: i64, nombre: &str, rol: Rol) -> Result<Usuaria> {
+    let nombre = nombre.trim();
+    let actual = obtener(conn, id)?;
+    validar_nombre(conn, nombre, Some(id))?;
+    if actual.rol == Rol::Duena && rol != Rol::Duena && duenas_activas(conn)? <= 1 {
+        return invalido("Es la única Dueña: la tienda no puede quedarse sin Dueña");
+    }
+    conn.execute("UPDATE usuarios SET nombre = ?2, rol = ?3 WHERE id = ?1", params![id, nombre, rol.texto()])?;
+    obtener(conn, id)
+}
+
+/// Quita a una persona (baja lógica: sus ventas, encargos y movimientos siguen a su nombre). Ya no puede entrar.
+pub fn quitar(conn: &Connection, id: i64, quien: &Usuaria) -> Result<()> {
+    if id == quien.id {
+        return invalido("No te puedes quitar a ti misma");
+    }
+    let u = obtener(conn, id)?;
+    if u.rol == Rol::Duena && duenas_activas(conn)? <= 1 {
+        return invalido("Es la única Dueña: la tienda no puede quedarse sin Dueña");
+    }
+    conn.execute("UPDATE usuarios SET activo = 0 WHERE id = ?1", [id])?;
+    Ok(())
 }
 
 pub fn obtener(conn: &Connection, id: i64) -> Result<Usuaria> {
@@ -203,6 +240,32 @@ mod tests {
         // el hash no es el PIN
         let h: String = c.query_row("SELECT pin_hash FROM usuarios WHERE id = ?1", [duena.id], |f| f.get(0)).unwrap();
         assert!(h.starts_with("$argon2id$") && !h.contains("1234"));
+    }
+
+    #[test]
+    fn editar_y_quitar() {
+        let c = en_memoria();
+        let rosa = crear(&c, "Rosa", Rol::Duena, "1234").unwrap();
+        let luis = crear(&c, "Luis", Rol::Vendedor, "5678").unwrap();
+        let ana = crear(&c, "Ana", Rol::Vendedor, "1111").unwrap();
+        // editar: nombre y rol
+        let l = editar(&c, luis.id, "Luis Alberto", Rol::Vendedor).unwrap();
+        assert_eq!(l.nombre, "Luis Alberto");
+        assert!(editar(&c, luis.id, "ana", Rol::Vendedor).is_err(), "nombre repetido");
+        assert!(editar(&c, luis.id, "Luis Alberto", Rol::Vendedor).is_ok(), "su propio nombre no cuenta como repetido");
+        // la única Dueña no puede dejar de serlo ni irse
+        assert!(editar(&c, rosa.id, "Rosa", Rol::Vendedor).is_err());
+        assert!(quitar(&c, rosa.id, &ana).is_err());
+        assert!(quitar(&c, rosa.id, &rosa).is_err(), "no se quita a sí misma");
+        // con otra Dueña, sí
+        editar(&c, ana.id, "Ana", Rol::Duena).unwrap();
+        editar(&c, rosa.id, "Rosa", Rol::Vendedor).unwrap();
+        // quitar: no entra más, no aparece, y su nombre queda libre
+        quitar(&c, luis.id, &ana).unwrap();
+        assert!(verificar_pin(&c, luis.id, "5678").is_err());
+        assert!(!listar(&c).unwrap().iter().any(|u| u.id == luis.id));
+        assert!(crear(&c, "Luis Alberto", Rol::Vendedor, "2222").is_ok());
+        assert!(quitar(&c, luis.id, &ana).is_err(), "ya no está");
     }
 
     #[test]

@@ -11,6 +11,7 @@
   import MetodosPago from '../componentes/MetodosPago.svelte';
   import TiposCliente from '../componentes/TiposCliente.svelte';
   import Usuarias from '../componentes/Usuarias.svelte';
+  import Categorias from '../componentes/Categorias.svelte';
   import { inventario } from '../inventario.svelte';
   import { avisoActivo, avisarLectura, fijarAviso } from '../escaner';
 
@@ -120,6 +121,11 @@
       <CambiarContrasena />
     </section>
     {/if}
+
+    <section class="vidrio bloque">
+      <h2 class="titulo-seccion">Categorías</h2>
+      <Categorias />
+    </section>
 
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Tipos de cliente y descuentos</h2>

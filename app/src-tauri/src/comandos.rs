@@ -184,6 +184,28 @@ pub fn usuaria_crear(estado: State<Estado>, nombre: String, rol: Rol, pin: Strin
     })
 }
 
+#[tauri::command]
+pub fn usuaria_editar(estado: State<Estado>, id: i64, nombre: String, rol: Rol) -> Res<Usuaria> {
+    con_abierta(&estado, |a| {
+        a.duena("editar cuentas")?;
+        let u = usuarios::editar(&a.lib.conn, id, &nombre, rol)?;
+        // si se editó a sí misma, la sesión del PC lo refleja
+        if a.sesion.as_ref().is_some_and(|s| s.id == id) {
+            a.sesion = Some(u.clone());
+        }
+        Ok(u)
+    })
+}
+
+/// Quita una cuenta (baja lógica). Si esa persona tenía un celular abierto, su próxima orden ya no pasa.
+#[tauri::command]
+pub fn usuaria_quitar(estado: State<Estado>, id: i64) -> Res<()> {
+    con_abierta(&estado, |a| {
+        let yo = a.duena("quitar cuentas")?;
+        usuarios::quitar(&a.lib.conn, id, &yo)
+    })
+}
+
 /// La Dueña cambia cualquier PIN; cada persona puede cambiar el suyo.
 #[tauri::command]
 pub fn usuaria_cambiar_pin(estado: State<Estado>, id: i64, pin: String) -> Res<()> {

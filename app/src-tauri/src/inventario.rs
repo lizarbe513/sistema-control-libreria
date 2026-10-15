@@ -30,6 +30,47 @@ pub fn categorias(estado: State<Estado>) -> Res<Vec<Categoria>> {
     })
 }
 
+/// Quien puede editar libros puede crear una categoría (así se hace desde el formulario del libro).
+#[tauri::command]
+pub fn categoria_crear(estado: State<Estado>, nombre: String) -> Res<Categoria> {
+    con_abierta(&estado, |a| {
+        a.puede_editar_libros()?;
+        libros::crear_categoria(&a.lib.conn, &nombre)
+    })
+}
+
+#[tauri::command]
+pub fn categoria_editar(estado: State<Estado>, clave: String, nombre: String, color: String) -> Res<Categoria> {
+    con_abierta(&estado, |a| {
+        a.duena("editar categorías")?;
+        let c = libros::editar_categoria(&a.lib.conn, &clave, &nombre, &color)?;
+        a.indice = None; // la búsqueda también encuentra por el nombre de la categoría
+        Ok(c)
+    })
+}
+
+#[tauri::command]
+pub fn categoria_eliminar(estado: State<Estado>, clave: String) -> Res<()> {
+    con_abierta(&estado, |a| {
+        a.duena("eliminar categorías")?;
+        libros::eliminar_categoria(&a.lib.conn, &clave)
+    })
+}
+
+#[derive(Serialize)]
+pub struct ConteoCategoria {
+    clave: String,
+    libros: i64,
+}
+
+#[tauri::command]
+pub fn categorias_conteo(estado: State<Estado>) -> Res<Vec<ConteoCategoria>> {
+    con_abierta(&estado, |a| {
+        a.usuaria()?;
+        Ok(libros::libros_por_categoria(&a.lib.conn)?.into_iter().map(|(clave, libros)| ConteoCategoria { clave, libros }).collect())
+    })
+}
+
 #[tauri::command]
 pub fn libros_buscar(estado: State<Estado>, consulta: String, filtros: Option<Filtros>) -> Res<Vec<Libro>> {
     con_abierta(&estado, |a| {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CATEGORIAS, soles, type Libro } from '../datos';
+  import { cat, soles, type Libro } from '../datos';
   import { app, avisar } from '../estado.svelte';
   import { inventario } from '../inventario.svelte';
   import { esDuena } from '../sesion.svelte';
@@ -32,7 +32,7 @@
         <h2>{libro.titulo}</h2>
         <p class="autor">{libro.autor}</p>
         <div class="chips">
-          <span class="chip" style:background={CATEGORIAS[libro.categoria].color}>{CATEGORIAS[libro.categoria].nombre}</span>
+          <span class="chip" style:background={cat(libro.categoria).color}>{cat(libro.categoria).nombre}</span>
           {#if libro.editorial || libro.anio}
             <span class="chip neutro">{[libro.editorial, libro.anio].filter(Boolean).join(' · ')}</span>
           {/if}

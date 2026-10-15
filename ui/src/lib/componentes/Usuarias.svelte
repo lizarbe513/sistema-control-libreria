@@ -1,8 +1,10 @@
 <script lang="ts">
-  // Ajustes → Usuarias (solo la Dueña): crear cuentas de vendedoras/es y cambiar PIN.
+  // Ajustes → Usuarias (solo la Dueña): crear, editar (nombre y rol), cambiar PIN y quitar cuentas.
   import { onMount } from 'svelte';
   import { api, type Rol, type Usuaria } from '../api';
-  import { avisar } from '../estado.svelte';
+  import { app, avisar } from '../estado.svelte';
+  import { sesion } from '../sesion.svelte';
+  import Confirmar from './Confirmar.svelte';
 
   let personas = $state<Usuaria[]>([]);
   let nombre = $state('');
@@ -12,6 +14,48 @@
   let error = $state('');
   let cambiando = $state<number | null>(null);
   let nuevoPin = $state('');
+
+  // editar en línea
+  let editando = $state<number | null>(null);
+  let eNombre = $state('');
+  let eRol = $state<Rol>('vendedor');
+  // quitar (con confirmación)
+  let porQuitar = $state<Usuaria | null>(null);
+
+  function editar(p: Usuaria) {
+    cambiando = null;
+    editando = p.id;
+    eNombre = p.nombre;
+    eRol = p.rol;
+  }
+
+  async function guardarEdicion(id: number) {
+    try {
+      const u = await api.editarUsuaria(id, eNombre, eRol);
+      avisar(`Cambios guardados para ${u.nombre}`);
+      editando = null;
+      if (sesion.usuaria?.id === u.id) {
+        sesion.usuaria = u;
+        app.usuario = u.nombre;
+      }
+      await cargar();
+    } catch (x) {
+      avisar((x as Error).message);
+    }
+  }
+
+  async function quitar() {
+    const p = porQuitar;
+    porQuitar = null;
+    if (!p) return;
+    try {
+      await api.quitarUsuaria(p.id);
+      avisar(`Se quitó la cuenta de ${p.nombre}`);
+      await cargar();
+    } catch (x) {
+      avisar((x as Error).message);
+    }
+  }
 
   async function cargar() {
     personas = await api.usuarias();
@@ -56,16 +100,39 @@
         <strong>{p.nombre}</strong>
         <small>{p.rol === 'duena' ? 'Dueña' : 'Vendedor/a'}</small>
       </div>
-      {#if cambiando === p.id}
+      {#if editando === p.id}
+        <div class="edicion">
+          <input bind:value={eNombre} maxlength="40" aria-label="Nombre de la cuenta" />
+          <select bind:value={eRol} aria-label="Rol de la cuenta">
+            <option value="vendedor">Vendedor/a</option>
+            <option value="duena">Dueña</option>
+          </select>
+          <button class="btn btn-primario chico" onclick={() => guardarEdicion(p.id)} disabled={!eNombre.trim()}>Guardar</button>
+          <button class="btn btn-blanco chico" onclick={() => (editando = null)}>Cancelar</button>
+        </div>
+      {:else if cambiando === p.id}
         <input class="pin" type="password" inputmode="numeric" maxlength="6" placeholder="Nuevo PIN" bind:value={nuevoPin} aria-label="Nuevo PIN" />
         <button class="btn btn-primario chico" onclick={() => guardarPin(p.id)} disabled={!/^\d{4,6}$/.test(nuevoPin)}>Guardar</button>
         <button class="btn btn-blanco chico" onclick={() => (cambiando = null)}>Cancelar</button>
       {:else}
-        <button class="btn btn-blanco chico" onclick={() => ((cambiando = p.id), (nuevoPin = ''))}>Cambiar PIN</button>
+        <div class="botones">
+          <button class="btn btn-blanco chico" onclick={() => editar(p)}>Editar</button>
+          <button class="btn btn-blanco chico" onclick={() => ((editando = null), (cambiando = p.id), (nuevoPin = ''))}>Cambiar PIN</button>
+          {#if p.id !== sesion.usuaria?.id}
+            <button class="btn btn-blanco chico quitar" onclick={() => (porQuitar = p)}>Quitar</button>
+          {/if}
+        </div>
       {/if}
     </li>
   {/each}
 </ul>
+
+{#if porQuitar}
+  <Confirmar titulo="¿Quitar la cuenta de {porQuitar.nombre}?" textoSi="Sí, quitar" peligro onSi={quitar} onNo={() => (porQuitar = null)}>
+    <p>Ya no podrá entrar, ni en el PC ni en el celular.</p>
+    <p class="atenuado">Sus ventas, encargos y movimientos se conservan en el historial, con su nombre.</p>
+  </Confirmar>
+{/if}
 
 <form class="nueva" onsubmit={crear}>
   <strong>Nueva cuenta</strong>
@@ -132,6 +199,27 @@
   }
   .pin {
     width: 120px;
+  }
+  .botones,
+  .edicion {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .edicion input,
+  .edicion select {
+    font: inherit;
+    padding: 6px 10px;
+    border-radius: 12px;
+    border: 2px solid var(--linea);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .edicion input {
+    width: 150px;
+  }
+  .quitar {
+    color: #b0243f;
   }
   .nueva {
     display: flex;

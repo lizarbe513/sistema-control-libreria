@@ -354,6 +354,25 @@ instala permitiendo «orígenes desconocidos» para esa app. Con el teléfono co
 `cargo tauri android dev`. Si el PC tiene UFW, el celular necesita llegar al servidor:
 `sudo ufw allow from 192.168.1.0/24 to any port 47321 proto tcp`.
 
+## Mejoras tras el hito 7
+
+- **Cuentas con CRUD completo** (Ajustes → Usuarias): además de crear y cambiar el PIN, se **editan** (nombre y rol)
+  y se **quitan**. Quitar es una baja lógica: las ventas, los encargos y los movimientos siguen a su nombre.
+  - Nadie se puede quitar a sí misma, y la tienda nunca se queda sin Dueña (no se puede quitar ni bajar de rol a la
+    última).
+  - Las órdenes que llegan del celular vuelven a leer la cuenta de la base (`Abierta::usuaria`). Si la Dueña la quitó,
+    ese celular deja de poder hacer cosas al instante; si le cambió el rol, el cambio rige enseguida.
+- **Dar de baja un libro con stock:** un diálogo propio (`componentes/Confirmar.svelte`, igual en PC y celular y se
+  cierra con «atrás») avisa cuántos ejemplares quedan y sugiere ajustar el stock en su lugar.
+- **«Libros»:** los agotados van en su propia sección, apagados (opacidad y gris), pero se abren y se editan igual.
+  Recuperan el color al pasar el mouse. En «Buscar» también se ven apagados.
+- **Categorías propias:**
+  - `libros::{crear_categoria, editar_categoria, eliminar_categoria}`. La clave sale del nombre y el color pastel y el
+    patrón se eligen solos. Solo se elimina una categoría sin libros, ni siquiera dados de baja.
+  - Se crean con «+ Nueva» en el formulario del libro y en «Guardar libros» del celular (quien puede editar libros), y
+    se administran en Ajustes → Categorías (Dueña: renombrar, color, eliminar).
+  - La interfaz ya no tiene una lista fija: `categorias.svelte.ts` es un registro reactivo alimentado por la base.
+
 ## Estado de los hitos
 
 | Hito | Contenido | Estado |
@@ -364,7 +383,7 @@ instala permitiendo «orígenes desconocidos» para esa app. Con el teléfono co
 | 4. Encargos y clientes | Fichas con historial, tablero por estados, adelanto, aviso por WhatsApp, carta al ingresar stock, entrega desde Vender | ✅ |
 | 5. Reportes | Por período, más vendidos, categorías, ganancia, cuadre de caja, libros sin movimiento, exportar CSV | ✅ |
 | 6. Respaldos y configuración | Respaldo automático y manual con carpeta externa, restaurar, cambiar la contraseña maestra, «olvidé mi PIN» | ✅ |
-| 7. Celular | Servidor LAN (HTTPS), vinculación por QR, guardar libros por ISBN, título leído con la cámara o escrito, app Android inmersiva con «atrás» y deslizar | En curso: APK instalado y vinculado; falta confirmar la cámara en el teléfono |
+| 7. Celular | Servidor LAN (HTTPS), vinculación por QR, guardar libros por ISBN, título leído con la cámara o escrito, app Android inmersiva con «atrás» y deslizar | ✅ |
 | 8. Asistente IA | Gemini + Groq, *function calling* sobre el inventario | Pendiente |
 | 9. Entrega | Instalador de Windows (GitHub Actions), pruebas en el PC de la tienda | Pendiente |
 

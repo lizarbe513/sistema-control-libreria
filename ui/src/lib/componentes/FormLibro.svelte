@@ -5,7 +5,7 @@
   import { onDestroy, untrack } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { api, type Formato, type LibroApi, type ResultadoLinea, type Sugerencia, type UbicacionApi } from '../api';
-  import { CATEGORIAS, soles, type Libro } from '../datos';
+  import { cat, soles, type Libro } from '../datos';
   import { app, avisar } from '../estado.svelte';
   import { revisarLlegada } from '../encargos.svelte';
   import { aCentimos, aSoles, borrador, buscarExistente, inventario, inventarioCambio, vista, type BorradorLibro } from '../inventario.svelte';
@@ -14,6 +14,8 @@
   import { tienda } from '../tienda/tienda.svelte';
   import BuscadorLinea from './BuscadorLinea.svelte';
   import Icono from './Icono.svelte';
+  import Confirmar from './Confirmar.svelte';
+  import NuevaCategoria from './NuevaCategoria.svelte';
   import Tienda3D from './Tienda3D.svelte';
 
   let { libro, onCerrar, onGuardado }: { libro: Libro | null; onCerrar: () => void; onGuardado?: (l: Libro) => void } = $props();
@@ -288,8 +290,11 @@
     }
   }
 
+  let confirmandoBaja = $state(false);
+
   async function darDeBaja() {
-    if (!libro || !confirm(`¿Dar de baja «${libro.titulo}»? Deja de aparecer en el inventario (el historial se conserva).`)) return;
+    confirmandoBaja = false;
+    if (!libro) return;
     try {
       await api.desactivarLibro(libro.id);
       inventarioCambio();
@@ -301,7 +306,7 @@
   }
 
   function tecla(e: KeyboardEvent) {
-    if (e.key === 'Escape') onCerrar();
+    if (e.key === 'Escape' && !confirmandoBaja) onCerrar();
   }
 </script>
 
@@ -379,7 +384,7 @@
         {#if vistaPortada}
           <img src={vistaPortada} alt="Portada" />
         {:else}
-          <div class="sin-portada" style:--c={CATEGORIAS[categoria as keyof typeof CATEGORIAS]?.color ?? '#F1ECEE'}>
+          <div class="sin-portada" style:--c={cat(categoria).color}>
             <span>{titulo || 'Portada'}</span>
           </div>
         {/if}
@@ -410,12 +415,15 @@
           <label class="campo">Año <input bind:value={anio} inputmode="numeric" maxlength="4" class="corto" /></label>
         </div>
         <div class="fila">
-          <label class="campo crece">
-            Categoría
-            <select bind:value={categoria}>
+          <div class="campo crece">
+            <span class="con-accion">
+              <label for="form-categoria">Categoría</label>
+              <NuevaCategoria onCreada={(k) => (categoria = k)} />
+            </span>
+            <select id="form-categoria" bind:value={categoria}>
               {#each inventario.categorias as c (c.clave)}<option value={c.clave}>{c.nombre}</option>{/each}
             </select>
-          </label>
+          </div>
           <label class="campo">
             Formato
             <select bind:value={formato}>
@@ -523,10 +531,30 @@
       <small class="atenuado">Precio actual {soles(libro.precio)}. Las ventas descontarán el stock solas.</small>
     </section>
     {#if duena}
-      <button type="button" class="baja" onclick={darDeBaja}>Dar de baja este libro</button>
+      <button type="button" class="baja" onclick={() => (confirmandoBaja = true)}>Dar de baja este libro</button>
     {/if}
   {/if}
 </aside>
+
+{#if confirmandoBaja && libro}
+  <Confirmar
+    titulo="¿Dar de baja «{libro.titulo}»?"
+    textoSi={libro.stock > 0 ? `Sí, dar de baja con ${libro.stock} en stock` : 'Sí, dar de baja'}
+    peligro
+    onSi={darDeBaja}
+    onNo={() => (confirmandoBaja = false)}
+  >
+    {#if libro.stock > 0}
+      <p class="alerta-stock" data-testid="baja-con-stock">
+        ⚠️ Todavía tiene <b>{libro.stock} {libro.stock === 1 ? 'ejemplar' : 'ejemplares'}</b> en stock. Si lo das de baja, dejan de contarse en el inventario y
+        ya no se podrá vender.
+      </p>
+      <p class="atenuado">Si solo quieres corregir la cantidad, usa la sección «📦 Stock» de esta ficha (por ejemplo, −2) en vez de darlo de baja.</p>
+    {:else}
+      <p>Deja de aparecer en el inventario. El historial de ventas se conserva.</p>
+    {/if}
+  </Confirmar>
+{/if}
 
 <style>
   .velo {
@@ -798,6 +826,20 @@
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+  }
+  .con-accion {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .alerta-stock {
+    margin: 0 0 6px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: color-mix(in srgb, #e0405f 14%, var(--surface));
+    color: #9c1f3a;
   }
   .baja {
     align-self: flex-start;

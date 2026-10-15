@@ -322,6 +322,34 @@ export class ApiDemo implements Api {
     return this.publica(u);
   }
 
+  async editarUsuaria(id: number, nombre: string, rol: Rol) {
+    await espera();
+    this.exigirDuena('editar cuentas');
+    const u = this.d.usuarias.find((x) => x.id === id);
+    if (!u) throw new Error('No se encontró a esa persona');
+    const n = nombre.trim();
+    if (!n || [...n].length > 40) throw new Error('Escribe un nombre (hasta 40 letras)');
+    if (this.d.usuarias.some((x) => x.id !== id && x.nombre.toLowerCase() === n.toLowerCase())) throw new Error(`Ya hay alguien llamado «${n}»`);
+    if (u.rol === 'duena' && rol !== 'duena' && this.d.usuarias.filter((x) => x.rol === 'duena').length <= 1)
+      throw new Error('Es la única Dueña: la tienda no puede quedarse sin Dueña');
+    u.nombre = n;
+    u.rol = rol;
+    this.persistir();
+    return this.publica(u);
+  }
+
+  async quitarUsuaria(id: number) {
+    await espera();
+    this.exigirDuena('quitar cuentas');
+    if (this.sesion?.id === id) throw new Error('No te puedes quitar a ti misma');
+    const u = this.d.usuarias.find((x) => x.id === id);
+    if (!u) throw new Error('No se encontró a esa persona');
+    if (u.rol === 'duena' && this.d.usuarias.filter((x) => x.rol === 'duena').length <= 1)
+      throw new Error('Es la única Dueña: la tienda no puede quedarse sin Dueña');
+    this.d.usuarias = this.d.usuarias.filter((x) => x.id !== id);
+    this.persistir();
+  }
+
   async cambiarPin(id: number, pin: string) {
     await espera();
     if (!this.sesion) throw new Error('No tienes permiso para hacer esto sin iniciar sesión');
@@ -337,6 +365,50 @@ export class ApiDemo implements Api {
   async categorias() {
     this.exigirSesion();
     return structuredClone(CATEGORIAS_DEMO);
+  }
+
+  async crearCategoria(nombre: string) {
+    await espera();
+    this.exigirEditar();
+    const n = nombre.trim();
+    if (!n || [...n].length > 40) throw new Error('Escribe el nombre de la categoría (hasta 40 letras)');
+    if (CATEGORIAS_DEMO.some((c) => c.nombre.toLowerCase() === n.toLowerCase())) throw new Error(`Ya existe la categoría «${n}»`);
+    const base = n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'categoria';
+    let clave = base;
+    for (let i = 2; CATEGORIAS_DEMO.some((c) => c.clave === clave); i++) clave = `${base}-${i}`;
+    const PALETA = ['#E9E3FB', '#DDEFFB', '#FCEFC7', '#FBD3DE', '#FDE2D0', '#DDF3E4', '#E3F4F4', '#F6E1F5', '#EFEBD8', '#E0E7FF'];
+    const PATRONES = ['marco', 'dorado', 'rayos', 'confeti', 'andino', 'cuadricula', 'ondas'];
+    const c = { clave, nombre: n, color: PALETA[CATEGORIAS_DEMO.length % PALETA.length], patron: PATRONES[CATEGORIAS_DEMO.length % PATRONES.length] };
+    CATEGORIAS_DEMO.push(c);
+    return structuredClone(c);
+  }
+
+  async editarCategoria(clave: string, nombre: string, color: string) {
+    await espera();
+    this.exigirDuena('editar categorías');
+    const c = CATEGORIAS_DEMO.find((x) => x.clave === clave);
+    if (!c) throw new Error('No se encontró esa categoría');
+    const n = nombre.trim();
+    if (!n) throw new Error('Escribe el nombre de la categoría (hasta 40 letras)');
+    if (CATEGORIAS_DEMO.some((x) => x.clave !== clave && x.nombre.toLowerCase() === n.toLowerCase())) throw new Error(`Ya existe la categoría «${n}»`);
+    if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error('El color no es válido');
+    Object.assign(c, { nombre: n, color });
+    return structuredClone(c);
+  }
+
+  async eliminarCategoria(clave: string) {
+    await espera();
+    this.exigirDuena('eliminar categorías');
+    const n = (this.d.libros ?? []).filter((l) => l.categoria === clave).length;
+    if (n) throw new Error(`Tiene ${n} libro(s): muévelos a otra categoría antes de eliminarla`);
+    const i = CATEGORIAS_DEMO.findIndex((x) => x.clave === clave);
+    if (i < 0) throw new Error('No se encontró esa categoría');
+    CATEGORIAS_DEMO.splice(i, 1);
+  }
+
+  async conteoCategorias() {
+    this.exigirSesion();
+    return CATEGORIAS_DEMO.map((c) => ({ clave: c.clave, libros: (this.d.libros ?? []).filter((l) => l.categoria === c.clave).length }));
   }
 
   async buscarLibros(consulta: string, f: Filtros = {}) {

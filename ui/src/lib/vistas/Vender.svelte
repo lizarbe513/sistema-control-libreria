@@ -8,7 +8,7 @@
   import DescuentoCampo from '../componentes/DescuentoCampo.svelte';
   import Icono from '../componentes/Icono.svelte';
   import IconoMetodo from '../componentes/IconoMetodo.svelte';
-  import { CATEGORIAS, soles, type Libro } from '../datos';
+  import { cat, soles, type Libro } from '../datos';
   import { app, avisar } from '../estado.svelte';
   import { inventario, vista } from '../inventario.svelte';
   import { miniatura } from '../portada';
@@ -201,7 +201,7 @@
                 <strong>{l.titulo}</strong>
                 <small>{l.autor || 'Autor desconocido'}</small>
                 <span class="meta">
-                  <span class="cat" style:background={CATEGORIAS[l.categoria]?.color}>{CATEGORIAS[l.categoria]?.nombre}</span>
+                  <span class="cat" style:background={cat(l.categoria).color}>{cat(l.categoria).nombre}</span>
                   <span class="stk" class:cero={l.stock === 0} class:bajo={l.stock > 0 && l.stock <= l.stockMinimo}>{l.stock === 0 ? 'Agotado' : `${l.stock} en stock`}</span>
                 </span>
               </span>

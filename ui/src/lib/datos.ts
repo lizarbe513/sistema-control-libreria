@@ -3,16 +3,8 @@
 import type { LibroApi } from './api/tipos';
 import type { UbicacionLibro } from './tienda/modelo';
 
-export type CategoriaId =
-  | 'literarias'
-  | 'diccionarios'
-  | 'biblias'
-  | 'autoayuda'
-  | 'ninos'
-  | 'regionales'
-  | 'preu'
-  | 'universitarios'
-  | 'otros';
+/** Clave de una categoría (las crea la Dueña: ya no es una lista fija). */
+export type CategoriaId = string;
 
 export type Patron = 'marco' | 'rayos' | 'confeti' | 'dorado' | 'cuadricula' | 'andino' | 'ondas';
 export type Formato = 'normal' | 'grueso' | 'infantil' | 'delgado';
@@ -55,7 +47,7 @@ export function aVista(l: LibroApi, urlPortada: (archivo: string) => string): Li
     autor: l.autor,
     editorial: l.editorial,
     anio: l.anio,
-    categoria: (l.categoria in CATEGORIAS ? l.categoria : 'otros') as CategoriaId,
+    categoria: l.categoria,
     precio: l.precioCent,
     stock: l.stock,
     ubicacion: l.ubicacion,
@@ -71,17 +63,7 @@ export function aVista(l: LibroApi, urlPortada: (archivo: string) => string): Li
   };
 }
 
-export const CATEGORIAS: Record<CategoriaId, Categoria> = {
-  literarias: { id: 'literarias', nombre: 'Obras literarias', color: '#E9E3FB', patron: 'marco' },
-  diccionarios: { id: 'diccionarios', nombre: 'Diccionarios', color: '#DDEFFB', patron: 'dorado' },
-  biblias: { id: 'biblias', nombre: 'Biblias', color: '#DDEFFB', patron: 'dorado' },
-  autoayuda: { id: 'autoayuda', nombre: 'Autoayuda', color: '#FCEFC7', patron: 'rayos' },
-  ninos: { id: 'ninos', nombre: 'Cuentos para niños', color: '#FBD3DE', patron: 'confeti' },
-  regionales: { id: 'regionales', nombre: 'Cuentos regionales', color: '#FDE2D0', patron: 'andino' },
-  preu: { id: 'preu', nombre: 'Pre-universitarios', color: '#DDF3E4', patron: 'cuadricula' },
-  universitarios: { id: 'universitarios', nombre: 'Universitarios', color: '#DDF3E4', patron: 'cuadricula' },
-  otros: { id: 'otros', nombre: 'Otros', color: '#F1ECEE', patron: 'ondas' },
-};
+export { CATEGORIAS, cat } from './categorias.svelte';
 
 /** «A:3:2» → estante A, tramo 3, repisa 2 (desde arriba). «2» → caja 2, «M1» → mesa 1, «P2:3:1» → puerta 2. */
 const ubicar = (u: string): UbicacionLibro => {

@@ -1,5 +1,5 @@
 // Portadas, lomos y páginas generadas en canvas para libros sin imagen de portada.
-import { CATEGORIAS, type Libro } from './datos';
+import { cat, type Libro } from './datos';
 
 export const fuentesListas: Promise<unknown> =
   typeof document !== 'undefined'
@@ -94,7 +94,7 @@ function lienzo(w: number, h: number) {
 
 // ---------- decoraciones por categoría ----------
 function decorar(ctx: CanvasRenderingContext2D, libro: Libro, W: number, H: number) {
-  const patron = CATEGORIAS[libro.categoria].patron;
+  const patron = cat(libro.categoria).patron;
   const rnd = aleatorio(libro.id);
   const claro = tono(libro.tapa, 0.75);
   ctx.save();

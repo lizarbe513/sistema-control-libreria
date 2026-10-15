@@ -51,11 +51,13 @@ impl Abierta {
     /// Quién está actuando: si la orden viene de un celular, **solo** la sesión de ese celular (aunque todavía no haya
     /// entrado: nunca hereda la del PC); si no, la del PC.
     pub fn usuaria(&self) -> Result<Usuaria> {
-        let u = match SESION_REMOTA.with(|s| s.borrow().clone()) {
-            Some(del_celular) => del_celular,
-            None => self.sesion.clone(),
-        };
-        u.ok_or_else(|| Error::Permiso("hacer esto sin iniciar sesión".into()))
+        match SESION_REMOTA.with(|s| s.borrow().clone()) {
+            // la del celular se vuelve a leer de la base: si la Dueña la quitó o le cambió el rol, rige al instante
+            Some(Some(u)) => libreria_core::usuarios::obtener(&self.lib.conn, u.id)
+                .map_err(|_| Error::Permiso("hacer esto: esa cuenta ya no existe (pídele a la Dueña una nueva)".into())),
+            Some(None) => Err(Error::Permiso("hacer esto sin iniciar sesión".into())),
+            None => self.sesion.clone().ok_or_else(|| Error::Permiso("hacer esto sin iniciar sesión".into())),
+        }
     }
 
     pub fn duena(&self, accion: &str) -> Result<Usuaria> {

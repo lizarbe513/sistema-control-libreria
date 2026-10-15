@@ -79,11 +79,29 @@ export class ApiTauri implements Api {
   crearUsuaria(nombre: string, rol: Rol, pin: string) {
     return this.llamar<Usuaria>('usuaria_crear', { nombre, rol, pin });
   }
+  editarUsuaria(id: number, nombre: string, rol: Rol) {
+    return this.llamar<Usuaria>('usuaria_editar', { id, nombre, rol });
+  }
+  quitarUsuaria(id: number) {
+    return this.llamar<void>('usuaria_quitar', { id });
+  }
   cambiarPin(id: number, pin: string) {
     return this.llamar<void>('usuaria_cambiar_pin', { id, pin });
   }
 
   // ── inventario ──
+  crearCategoria(nombre: string) {
+    return this.llamar<CategoriaApi>('categoria_crear', { nombre });
+  }
+  editarCategoria(clave: string, nombre: string, color: string) {
+    return this.llamar<CategoriaApi>('categoria_editar', { clave, nombre, color });
+  }
+  eliminarCategoria(clave: string) {
+    return this.llamar<void>('categoria_eliminar', { clave });
+  }
+  conteoCategorias() {
+    return this.llamar<{ clave: string; libros: number }[]>('categorias_conteo');
+  }
   categorias() {
     return this.llamar<CategoriaApi[]>('categorias');
   }

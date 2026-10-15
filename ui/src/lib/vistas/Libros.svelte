@@ -4,7 +4,7 @@
   import { api, type Filtros } from '../api';
   import FormLibro from '../componentes/FormLibro.svelte';
   import Icono from '../componentes/Icono.svelte';
-  import { CATEGORIAS, soles, type Libro } from '../datos';
+  import { cat, soles, type Libro } from '../datos';
   import { app, avisar } from '../estado.svelte';
   import { inventario, vista } from '../inventario.svelte';
   import { miniatura } from '../portada';
@@ -110,31 +110,43 @@
       {/if}
     </div>
   {:else}
-    <ul class="lista">
-      {#each libros as l (l.id)}
-        {@const u = l.ubicacion ? resolver(tienda.datos, l.ubicacion) : null}
-        <li class="fila tarjeta">
-          <button class="principal" onclick={() => abrir(l)} title="Ver la ficha">
-            <img src={l.portada ?? miniatura(l)} alt="" />
-            <span class="textos">
-              <strong>{l.titulo}</strong>
-              <small>{l.autor || 'Autor desconocido'} · <code>{l.codigo}</code></small>
-            </span>
-          </button>
-          <span class="cat" style:background={CATEGORIAS[l.categoria]?.color}>{CATEGORIAS[l.categoria]?.nombre}</span>
-          <span class="precio">{soles(l.precio)}</span>
-          <span class="stock" class:cero={l.stock === 0} class:bajo={l.stock > 0 && l.stock <= l.stockMinimo}>{l.stock}</span>
-          {#if u}
-            <span class="ubic" style:background={u.info.color} style:color={u.info.fuerte}>{textoCorto(u)}</span>
-          {:else}
-            <span class="ubic sin">{l.ubicacion ? 'Por revisar' : 'Sin ubicación'}</span>
-          {/if}
-          {#if puedeEditar}
-            <button class="editar" onclick={() => (app.editar = l.id)} aria-label={`Editar ${l.titulo}`} title="Editar"><Icono nombre="nota" tam={18} /></button>
-          {/if}
-        </li>
-      {/each}
-    </ul>
+    {#snippet fila(l: Libro)}
+      {@const u = l.ubicacion ? resolver(tienda.datos, l.ubicacion) : null}
+      <li class="fila tarjeta" class:apagado={l.stock === 0}>
+        <button class="principal" onclick={() => abrir(l)} title="Ver la ficha">
+          <img src={l.portada ?? miniatura(l)} alt="" />
+          <span class="textos">
+            <strong>{l.titulo}</strong>
+            <small>{l.autor || 'Autor desconocido'} · <code>{l.codigo}</code></small>
+          </span>
+        </button>
+        <span class="cat" style:background={cat(l.categoria).color}>{cat(l.categoria).nombre}</span>
+        <span class="precio">{soles(l.precio)}</span>
+        <span class="stock" class:cero={l.stock === 0} class:bajo={l.stock > 0 && l.stock <= l.stockMinimo}>{l.stock}</span>
+        {#if u}
+          <span class="ubic" style:background={u.info.color} style:color={u.info.fuerte}>{textoCorto(u)}</span>
+        {:else}
+          <span class="ubic sin">{l.ubicacion ? 'Por revisar' : 'Sin ubicación'}</span>
+        {/if}
+        {#if puedeEditar}
+          <button class="editar" onclick={() => (app.editar = l.id)} aria-label={`Editar ${l.titulo}`} title="Editar"><Icono nombre="nota" tam={18} /></button>
+        {/if}
+      </li>
+    {/snippet}
+    {@const conStock = libros.filter((l) => l.stock > 0)}
+    {@const agotados = libros.filter((l) => l.stock === 0)}
+    {#if conStock.length}
+      {#if agotados.length}<h2 class="grupo" data-testid="grupo-con-stock">Con stock <span>{conStock.length}</span></h2>{/if}
+      <ul class="lista">
+        {#each conStock as l (l.id)}{@render fila(l)}{/each}
+      </ul>
+    {/if}
+    {#if agotados.length}
+      {#if conStock.length || filtro !== 'agotados'}<h2 class="grupo agotados" data-testid="grupo-agotados">Agotados <span>{agotados.length}</span></h2>{/if}
+      <ul class="lista">
+        {#each agotados as l (l.id)}{@render fila(l)}{/each}
+      </ul>
+    {/if}
   {/if}
 </div>
 
@@ -284,6 +296,40 @@
     font-weight: 800;
     color: var(--primary-strong);
     text-align: right;
+  }
+  .grupo {
+    margin: 14px 4px 6px;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .grupo span {
+    font-size: 12px;
+    padding: 1px 9px;
+    border-radius: 999px;
+    background: var(--surface-2);
+  }
+  .grupo.agotados::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--linea);
+  }
+  /* agotados: apagados a primera vista, pero se pueden abrir y editar igual (recuperan el color al pasar o tocar) */
+  .fila.apagado {
+    opacity: 0.6;
+    filter: grayscale(0.75);
+    transition:
+      opacity 0.2s,
+      filter 0.2s;
+  }
+  .fila.apagado:hover,
+  .fila.apagado:focus-within {
+    opacity: 1;
+    filter: none;
   }
   .stock {
     font-weight: 800;

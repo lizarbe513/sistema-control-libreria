@@ -189,7 +189,7 @@
     <div class="resultados" data-vacio>
       {#each resultados as l (l.id)}
         {@const u = l.ubicacion ? resolver(tienda.datos, l.ubicacion) : null}
-        <button class="libro tarjeta" class:elegido={app.seleccionado?.id === l.id} onclick={() => elegir(l)} animate:flip={{ duration: 300 }}>
+        <button class="libro tarjeta" class:apagado={l.stock === 0} class:elegido={app.seleccionado?.id === l.id} onclick={() => elegir(l)} animate:flip={{ duration: 300 }}>
           <img src={l.portada ?? miniatura(l)} alt="" />
           <div class="info">
             <strong>{l.titulo}</strong>
@@ -305,6 +305,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* agotados: apagados a primera vista, pero se abren igual */
+  .libro.apagado {
+    opacity: 0.6;
+    filter: grayscale(0.75);
+  }
+  .libro.apagado:hover,
+  .libro.apagado.elegido {
+    opacity: 1;
+    filter: none;
   }
   .chips-fila {
     display: flex;

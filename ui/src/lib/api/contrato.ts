@@ -50,9 +50,15 @@ export interface Api {
   guardarPreferencias(cambios: Record<string, unknown>): Promise<Record<string, unknown>>;
   crearUsuaria(nombre: string, rol: Rol, pin: string): Promise<Usuaria>;
   cambiarPin(id: number, pin: string): Promise<void>;
+  editarUsuaria(id: number, nombre: string, rol: Rol): Promise<Usuaria>;
+  quitarUsuaria(id: number): Promise<void>;
 
   // ── inventario ──
   categorias(): Promise<CategoriaApi[]>;
+  crearCategoria(nombre: string): Promise<CategoriaApi>;
+  editarCategoria(clave: string, nombre: string, color: string): Promise<CategoriaApi>;
+  eliminarCategoria(clave: string): Promise<void>;
+  conteoCategorias(): Promise<{ clave: string; libros: number }[]>;
   buscarLibros(consulta: string, filtros?: Filtros): Promise<LibroApi[]>;
   libro(id: number): Promise<LibroApi>;
   guardarLibro(e: LibroEntrada): Promise<LibroApi>;

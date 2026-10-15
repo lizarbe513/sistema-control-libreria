@@ -2,6 +2,7 @@
 // (las vistas lo observan para volver a pedir datos cuando se guarda un libro).
 import { api, type CategoriaApi, type LibroApi, type ResultadoLinea, type UbicacionApi } from './api';
 import { aVista, type Libro } from './datos';
+import { fijarCategorias } from './categorias.svelte';
 
 export const inventario = $state({
   version: 0,
@@ -21,6 +22,14 @@ export const vista = (l: LibroApi): Libro => aVista(l, (archivo) => api.urlPorta
 export async function prepararInventario() {
   await api.prepararPortadas();
   [inventario.categorias, inventario.vendedoresEditan] = await Promise.all([api.categorias(), api.permisoVendedoresEditan()]);
+  fijarCategorias(inventario.categorias);
+}
+
+/** Vuelve a pedir las categorías (tras crear, renombrar o eliminar una). */
+export async function recargarCategorias() {
+  inventario.categorias = await api.categorias();
+  fijarCategorias(inventario.categorias);
+  inventarioCambio();
 }
 
 /** Precio escrito por la usuaria («35», «35.50», «35,5») → céntimos. null si no es un número válido. */
