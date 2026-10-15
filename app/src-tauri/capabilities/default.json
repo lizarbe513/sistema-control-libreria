@@ -19,7 +19,9 @@
           "url": "https://console.groq.com/*"
         }
       ]
-    }
+    },
+    "updater:default",
+    "process:allow-restart"
   ],
   "platforms": [
     "linux",

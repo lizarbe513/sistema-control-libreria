@@ -20,6 +20,7 @@
   import Reportes from './lib/vistas/Reportes.svelte';
   import Pendiente from './lib/vistas/Pendiente.svelte';
   import Asistente from './lib/vistas/Asistente.svelte';
+  import AvisoActualizacion from './lib/componentes/AvisoActualizacion.svelte';
   import Vender from './lib/vistas/Vender.svelte';
   import Bienvenida from './lib/acceso/Bienvenida.svelte';
   import Desbloquear from './lib/acceso/Desbloquear.svelte';
@@ -127,6 +128,8 @@
 {#if encargosUI.carta && sesion.usuaria}
   {#key encargosUI.carta}<CartaLlego carta={encargosUI.carta} />{/key}
 {/if}
+
+{#if sesion.usuaria && !movil}<AvisoActualizacion />{/if}
 
 {#if app.toast}
   <div class="toast" transition:fly={{ y: 30, duration: 300 }} role="status">{app.toast}</div>

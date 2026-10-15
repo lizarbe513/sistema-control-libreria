@@ -1,0 +1,28 @@
+name: Pruebas
+
+# En cada cambio: las pruebas del núcleo (base cifrada, ventas, encargos, asistente…) y la interfaz. Barato y rápido.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Núcleo (Rust)
+        run: cargo test -p libreria-core
+      - name: Interfaz
+        working-directory: ui
+        run: |
+          npm ci
+          npx svelte-check --tsconfig ./tsconfig.app.json
+          npm run build

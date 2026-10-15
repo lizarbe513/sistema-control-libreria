@@ -36,3 +36,6 @@ app/src-tauri/gen/android/app/tauri.properties
 *.jks
 *.keystore
 ui/dist/
+# llave privada del actualizador (vive en ~/.tauri, fuera del repositorio)
+*.key
+siglo-xxi-updater*

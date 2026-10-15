@@ -15,6 +15,10 @@
   import AsistenteConfig from '../componentes/AsistenteConfig.svelte';
   import { inventario } from '../inventario.svelte';
   import { avisoActivo, avisarLectura, fijarAviso } from '../escaner';
+  import { actualizacion, hayActualizador, revisar, versionActual } from '../actualizacion.svelte';
+  import { onMount } from 'svelte';
+
+  onMount(() => void versionActual());
 
   let avisoEscaneo = $state(avisoActivo());
 
@@ -163,6 +167,19 @@
     <p class="atenuado">Elige el ambiente. Interactúa con los espacios vacíos del fondo: ¡cada uno esconde algo!</p>
     <SelectorFondo grande />
   </section>
+
+  {#if hayActualizador}
+    <section class="vidrio bloque">
+      <h2 class="titulo-seccion">Versión y actualizaciones</h2>
+      <p class="atenuado">Versión instalada: <b>{actualizacion.version || '—'}</b>. Al abrir la app se busca sola; antes de instalar una nueva se guarda un respaldo.</p>
+      <div class="anims">
+        <button class="btn btn-blanco" onclick={() => revisar(true)} disabled={actualizacion.revisando}>{actualizacion.revisando ? 'Buscando…' : 'Buscar actualizaciones'}</button>
+        {#if actualizacion.ultima === 'al-dia'}<span class="atenuado">✓ Ya tienes la última versión.</span>{/if}
+        {#if actualizacion.ultima === 'error'}<span class="atenuado">No se pudo buscar (¿hay internet?).</span>{/if}
+        {#if actualizacion.nueva}<span><b>Hay una versión nueva ({actualizacion.nueva}):</b> mira el aviso de arriba.</span>{/if}
+      </div>
+    </section>
+  {/if}
 
   {#if api.esCelular}
     <section class="vidrio bloque">

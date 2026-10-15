@@ -32,6 +32,8 @@ hex = "0.4"
 [target.'cfg(not(target_os = "android"))'.dependencies]
 libreria-core = { path = "../../crates/core" }
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 keyring = "4.2.0"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
 rcgen = "0.13"
