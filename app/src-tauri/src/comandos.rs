@@ -167,7 +167,9 @@ pub fn preferencias_guardar(estado: State<Estado>, cambios: serde_json::Value) -
     con_abierta(&estado, |a| {
         let id = a.usuaria()?.id;
         let p = usuarios::guardar_preferencias(&a.lib.conn, id, &cambios)?;
-        if let Some(s) = a.sesion.as_mut() {
+        if !a.es_remota()
+            && let Some(s) = a.sesion.as_mut()
+        {
             s.preferencias = p.clone();
         }
         Ok(p)

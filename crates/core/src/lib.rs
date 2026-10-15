@@ -3,6 +3,7 @@
 
 pub mod busqueda;
 pub mod carpeta;
+pub mod celulares;
 pub mod clientes;
 pub mod db;
 pub mod encargos;

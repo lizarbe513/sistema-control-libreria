@@ -113,7 +113,7 @@ pub async fn libros_buscar_en_linea(estado: State<'_, Estado>, titulo: String, a
     isbn::buscar_en_linea(&titulo, &autor, clave.as_deref()).await
 }
 
-fn guardar_portada(estado: &State<Estado>, id: i64, bytes: &[u8]) -> Res<Libro> {
+pub(crate) fn guardar_portada(estado: &State<Estado>, id: i64, bytes: &[u8]) -> Res<Libro> {
     con_abierta(estado, |a| {
         a.puede_editar_libros()?;
         libros::obtener(&a.lib.conn, id, false)?;

@@ -1,5 +1,6 @@
 //! Estado de la app: en qué fase está (sin configurar, bloqueada o abierta) y la sesión activa.
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -34,11 +35,11 @@ impl Abierta {
 
     /// Solo la Dueña ve costos.
     pub fn ve_costos(&self) -> bool {
-        self.sesion.as_ref().is_some_and(|u| u.rol == Rol::Duena)
+        self.usuaria().is_ok_and(|u| u.rol == Rol::Duena)
     }
 
     /// La Dueña siempre; los vendedores, si ella lo permitió en Ajustes.
-    pub fn puede_editar_libros(&self) -> Result<&Usuaria> {
+    pub fn puede_editar_libros(&self) -> Result<Usuaria> {
         let u = self.usuaria()?;
         if u.rol == Rol::Duena || vendedores_editan(&self.lib.conn) {
             Ok(u)
@@ -47,17 +48,45 @@ impl Abierta {
         }
     }
 
-    pub fn usuaria(&self) -> Result<&Usuaria> {
-        self.sesion.as_ref().ok_or_else(|| Error::Permiso("hacer esto sin iniciar sesión".into()))
+    /// Quién está actuando: si la orden viene de un celular, su usuaria; si no, la del PC.
+    pub fn usuaria(&self) -> Result<Usuaria> {
+        SESION_REMOTA
+            .with(|s| s.borrow().clone())
+            .or_else(|| self.sesion.clone())
+            .ok_or_else(|| Error::Permiso("hacer esto sin iniciar sesión".into()))
     }
 
-    pub fn duena(&self, accion: &str) -> Result<&Usuaria> {
+    pub fn duena(&self, accion: &str) -> Result<Usuaria> {
         let u = self.usuaria()?;
         if u.rol != Rol::Duena {
             return Err(Error::Permiso(accion.into()));
         }
         Ok(u)
     }
+
+    /// ¿Esta orden viene de un celular? (Entonces la sesión del PC no se toca.)
+    pub fn es_remota(&self) -> bool {
+        SESION_REMOTA.with(|s| s.borrow().is_some())
+    }
+}
+
+thread_local! {
+    /// La usuaria de un celular mientras se ejecuta su orden en ESTE hilo. Los comandos del PC corren en otros
+    /// hilos y nunca la ven: así el celular y el PC pueden tener sesiones distintas sin mezclarse.
+    static SESION_REMOTA: RefCell<Option<Usuaria>> = const { RefCell::new(None) };
+}
+
+/// Ejecuta `f` (síncrona, en este mismo hilo) actuando como `usuaria`, la sesión de un celular.
+pub fn como_celular<T>(usuaria: Option<Usuaria>, f: impl FnOnce() -> T) -> T {
+    struct Limpiar;
+    impl Drop for Limpiar {
+        fn drop(&mut self) {
+            SESION_REMOTA.with(|s| *s.borrow_mut() = None);
+        }
+    }
+    SESION_REMOTA.with(|s| *s.borrow_mut() = usuaria);
+    let _limpiar = Limpiar;
+    f()
 }
 
 pub enum Fase {

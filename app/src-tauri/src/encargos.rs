@@ -107,16 +107,22 @@ pub fn whatsapp_plantilla(estado: State<EstadoApp>, texto: Option<String>) -> Re
 /// Si el encargo estaba en «llegó», pasa a «avisado». Devuelve el encargo y la URL abierta.
 #[tauri::command]
 pub fn encargo_avisar_whatsapp(app: AppHandle, estado: State<EstadoApp>, id: i64) -> Res<(Encargo, String)> {
-    let (url, encargo) = con_abierta(&estado, |a| {
-        let yo = a.usuaria()?.clone();
+    let (encargo, url) = avisar_preparar(&estado, id)?;
+    app.opener().open_url(&url, None::<&str>).map_err(|e| Error::Validacion(format!("No se pudo abrir WhatsApp: {e}")))?;
+    Ok((encargo, url))
+}
+
+/// Arma el aviso y la dirección de WhatsApp sin abrirla (el celular la abre en el celular; el PC, en el PC).
+/// Si el encargo estaba en «llegó», pasa a «avisado».
+pub(crate) fn avisar_preparar(estado: &State<EstadoApp>, id: i64) -> Res<(Encargo, String)> {
+    con_abierta(estado, |a| {
+        let yo = a.usuaria()?;
         let e = encargos::obtener(&a.lib.conn, id)?;
         let texto = encargos::mensaje(&a.lib.conn, id, &a.lib.meta.tienda)?;
         let url = encargos::url_whatsapp(&e.telefono, &texto)?;
         let e = if e.estado == Estado::Llego { encargos::cambiar_estado(&mut a.lib.conn, id, Estado::Avisado, false, &yo)? } else { e };
-        Ok((url, e))
-    })?;
-    app.opener().open_url(&url, None::<&str>).map_err(|e| Error::Validacion(format!("No se pudo abrir WhatsApp: {e}")))?;
-    Ok((encargo, url))
+        Ok((e, url))
+    })
 }
 
 /// Margen de ganancia (%) para el precio de un libro encargado. Con `pct` lo cambia (solo la Dueña).

@@ -1,5 +1,6 @@
 //! App de escritorio (Tauri 2) de la Librería SIGLO XXI.
 
+mod celular;
 mod comandos;
 mod encargos;
 mod estado;
@@ -7,6 +8,8 @@ mod inventario;
 mod llavero;
 mod reportes;
 mod respaldos;
+mod rpc;
+mod servidor;
 mod ventas;
 
 use std::sync::Mutex;
@@ -25,6 +28,8 @@ pub fn run() {
             let fase = estado::fase_inicial(app.handle());
             *app.state::<Estado>().0.lock().expect("estado") = fase;
             respaldos::iniciar_automatico(app.handle().clone());
+            app.manage(celular::Celulares::nuevo(app.handle().clone()));
+            celular::iniciar_vigilante(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -94,6 +99,10 @@ pub fn run() {
             respaldos::respaldo_restaurar_nuevo,
             respaldos::contrasena_cambiar,
             respaldos::pin_recuperar,
+            celular::celulares_estado,
+            celular::celulares_activar,
+            celular::celulares_codigo,
+            celular::celulares_desconectar,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar la Librería SIGLO XXI")
