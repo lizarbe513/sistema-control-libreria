@@ -1,0 +1,18 @@
+name: Probar el token de publicación
+
+# Comprueba que VERSIONES_TOKEN puede escribir en el repo público de versiones (crea y borra un borrador). Se lanza a mano.
+on: workflow_dispatch
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Crear y borrar un Release borrador
+        env:
+          GH_TOKEN: ${{ secrets.VERSIONES_TOKEN }}
+        run: |
+          set -euo pipefail
+          [ -n "$GH_TOKEN" ] || { echo "::error::VERSIONES_TOKEN está vacío"; exit 1; }
+          gh release create prueba-token --draft -R lizarbe513/libreria-siglo-xxi-versiones --title "prueba" --notes "borrar"
+          gh release delete prueba-token -R lizarbe513/libreria-siglo-xxi-versiones -y --cleanup-tag
+          echo "El token puede publicar en el repo de versiones ✓"
