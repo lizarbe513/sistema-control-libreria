@@ -42,12 +42,12 @@ pub fn run() {
     celular_movil();
 }
 
-/// Plugin propio del celular: lee el texto de una foto con ML Kit (`gen/android/.../OcrPlugin.kt`).
+/// Un plugin propio del celular, escrito en Kotlin (`gen/android/.../<clase>.kt`).
 #[cfg(target_os = "android")]
-fn ocr<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
-    tauri::plugin::Builder::new("ocr")
-        .setup(|_app, api| {
-            api.register_android_plugin("pe.sigloxxi.libreria", "OcrPlugin")?;
+fn plugin_kotlin<R: tauri::Runtime>(nombre: &'static str, clase: &'static str) -> tauri::plugin::TauriPlugin<R> {
+    tauri::plugin::Builder::new(nombre)
+        .setup(move |_app, api| {
+            api.register_android_plugin("pe.sigloxxi.libreria", clase)?;
             Ok(())
         })
         .build()
@@ -59,7 +59,9 @@ fn celular_movil() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_barcode_scanner::init())
-        .plugin(ocr())
+        // lee el texto de una foto con ML Kit, y actualiza la app descargando el APK publicado
+        .plugin(plugin_kotlin("ocr", "OcrPlugin"))
+        .plugin(plugin_kotlin("actualizar", "ActualizarPlugin"))
         // las portadas se piden al PC por un protocolo propio, fijando su certificado
         .register_asynchronous_uri_scheme_protocol("lan", |_ctx, request, responder| {
             let ruta = request.uri().path().to_string();

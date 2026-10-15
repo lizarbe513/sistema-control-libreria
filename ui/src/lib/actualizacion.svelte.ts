@@ -1,12 +1,19 @@
-// Actualizaciones de la app del PC: al abrirse revisa si hay una versión nueva (firmada con la llave del proyecto) y,
-// con un clic, hace un respaldo, la descarga, la instala y se reinicia. Sin internet no molesta.
+// Actualizaciones de la app.
+// · PC (Windows): al abrirse revisa si hay una versión nueva (firmada con la llave del proyecto) y, con un clic, hace un
+//   respaldo, la descarga, la instala y se reinicia.
+// · Celular (Android): revisa latest-android.json del repositorio público de versiones, descarga el APK y abre el
+//   instalador de Android (un toque en «Instalar»). También avisa si el PC tiene una versión más nueva que el celular.
+// Sin internet no molesta.
 import { api } from './api';
 import { avisar } from './estado.svelte';
 
 const enTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-const esCelular = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
-/** Solo la app instalada en el PC (no el navegador, no el celular, no el modo de desarrollo). */
-export const hayActualizador = enTauri && !esCelular && !import.meta.env.DEV;
+const esAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+/** Solo las apps instaladas (PC y celular), no el navegador ni el modo de desarrollo. */
+export const hayActualizador = enTauri && !import.meta.env.DEV;
+export const esCelular = esAndroid;
+
+const URL_ANDROID = 'https://github.com/lizarbe513/libreria-siglo-xxi-versiones/releases/latest/download/latest-android.json';
 
 export const actualizacion = $state({
   version: '',
@@ -15,14 +22,29 @@ export const actualizacion = $state({
   notas: '',
   revisando: false,
   instalando: false,
-  /** 0 a 100 mientras descarga; null si aún no se sabe el tamaño. */
+  /** 0 a 100 mientras descarga (solo PC); null si aún no se sabe el tamaño. */
   progreso: null as number | null,
   /** Resultado de la última revisión manual: 'al-dia' | 'error' | null. */
   ultima: null as 'al-dia' | 'error' | null,
+  /** Celular: el PC ya tiene una versión más nueva que esta app. */
+  pcMasNuevo: null as string | null,
+  /** Celular: falta permitir «instalar apps desconocidas» (Android lo pide una vez). */
+  faltaPermiso: false,
 });
+
+/** «1.2.10» > «1.2.9». */
+export function esMasNueva(a: string, b: string) {
+  const n = (v: string) => v.split('.').map((x) => parseInt(x, 10) || 0);
+  const [x, y] = [n(a), n(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  }
+  return false;
+}
 
 type Update = { version: string; body?: string; downloadAndInstall: (cb: (e: { event: string; data?: { contentLength?: number; chunkLength?: number } }) => void) => Promise<void> };
 let pendiente: Update | null = null;
+let apk: { url: string; sha256: string } | null = null;
 
 export async function versionActual() {
   if (!enTauri) return '';
@@ -35,12 +57,42 @@ export async function versionActual() {
   return actualizacion.version;
 }
 
+async function revisarCelular(manual: boolean) {
+  const { invoke } = await import('@tauri-apps/api/core');
+  const actual = actualizacion.version || (await versionActual());
+  let error = false;
+  try {
+    const j = await invoke<{ version: string; notes?: string; apk: string; sha256?: string }>('plugin:actualizar|revisar', { url: URL_ANDROID });
+    if (j.version && esMasNueva(j.version, actual)) {
+      actualizacion.nueva = j.version;
+      actualizacion.notas = j.notes ?? '';
+      apk = { url: j.apk, sha256: j.sha256 ?? '' };
+    } else {
+      actualizacion.nueva = null;
+    }
+  } catch {
+    error = true;
+  }
+  // ¿el PC es más nuevo que este celular?
+  try {
+    const pc = (await api.versionPc?.()) ?? null;
+    actualizacion.pcMasNuevo = pc && esMasNueva(pc, actual) ? pc : null;
+  } catch {
+    actualizacion.pcMasNuevo = null;
+  }
+  if (manual) actualizacion.ultima = error ? 'error' : actualizacion.nueva ? null : 'al-dia';
+}
+
 /** Revisa si hay una versión nueva. `manual`: el usuario la pidió (muestra el resultado aunque no haya nada). */
 export async function revisar(manual = false) {
   if (!hayActualizador || actualizacion.revisando || actualizacion.instalando) return;
   actualizacion.revisando = true;
   actualizacion.ultima = null;
   try {
+    if (esAndroid) {
+      await revisarCelular(manual);
+      return;
+    }
     const { check } = await import('@tauri-apps/plugin-updater');
     const u = (await check()) as Update | null;
     pendiente = u;
@@ -54,9 +106,31 @@ export async function revisar(manual = false) {
   }
 }
 
-/** Respaldo de seguridad, descarga, instalación y reinicio. */
+async function instalarCelular() {
+  if (!apk) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  actualizacion.instalando = true;
+  actualizacion.faltaPermiso = false;
+  try {
+    await invoke('plugin:actualizar|instalar', { url: apk.url, sha256: apk.sha256 });
+    avisar('Toca «Instalar» en la pantalla de Android 📲');
+  } catch (e) {
+    if (String(e) === 'permiso') {
+      actualizacion.faltaPermiso = true;
+      avisar('Activa «Permitir de esta fuente» y vuelve a tocar Actualizar');
+    } else {
+      avisar(`No se pudo actualizar: ${String(e)}`);
+    }
+  } finally {
+    actualizacion.instalando = false;
+  }
+}
+
+/** PC: respaldo de seguridad, descarga, instalación y reinicio. Celular: descarga el APK y abre el instalador. */
 export async function instalar() {
-  if (!pendiente || actualizacion.instalando) return;
+  if (actualizacion.instalando) return;
+  if (esAndroid) return instalarCelular();
+  if (!pendiente) return;
   actualizacion.instalando = true;
   actualizacion.progreso = null;
   try {

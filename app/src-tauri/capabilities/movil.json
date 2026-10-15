@@ -24,6 +24,8 @@
           "url": "https://api.whatsapp.com/*"
         }
       ]
-    }
+    },
+    "actualizar:allow-revisar",
+    "actualizar:allow-instalar"
   ]
 }

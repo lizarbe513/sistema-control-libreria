@@ -2,7 +2,7 @@
   // Aviso discreto de «hay una versión nueva» (PC). Se revisa una vez al entrar.
   import { onMount } from 'svelte';
   import { fly } from 'svelte/transition';
-  import { actualizacion, hayActualizador, instalar, revisar } from '../actualizacion.svelte';
+  import { actualizacion, esCelular, hayActualizador, instalar, revisar } from '../actualizacion.svelte';
 
   let oculto = $state(false);
   onMount(() => {
@@ -10,25 +10,34 @@
   });
 </script>
 
-{#if actualizacion.nueva && !oculto}
+{#if (actualizacion.nueva || actualizacion.pcMasNuevo) && !oculto}
   <div class="aviso tarjeta" role="status" transition:fly={{ y: -20, duration: 300 }} data-testid="aviso-actualizacion">
     <span class="ico">⬆️</span>
     <div class="texto">
-      <strong>Hay una versión nueva ({actualizacion.nueva})</strong>
-      <small>
-        {#if actualizacion.instalando}
-          Actualizando{actualizacion.progreso === null ? '…' : ` ${actualizacion.progreso} %`}. La app se reiniciará sola.
-        {:else}
-          Antes de instalar se guarda un respaldo de tus datos.
-        {/if}
-      </small>
-      {#if actualizacion.instalando}
+      {#if actualizacion.nueva}
+        <strong>Hay una versión nueva ({actualizacion.nueva})</strong>
+        <small>
+          {#if actualizacion.instalando}
+            {esCelular ? 'Descargando…' : `Actualizando${actualizacion.progreso === null ? '…' : ` ${actualizacion.progreso} %`}. La app se reiniciará sola.`}
+          {:else if actualizacion.faltaPermiso}
+            Activa «Permitir de esta fuente» en el ajuste que se abrió y vuelve a tocar Actualizar.
+          {:else if esCelular}
+            {actualizacion.pcMasNuevo ? `El PC ya tiene la ${actualizacion.pcMasNuevo}: actualiza este celular. ` : ''}Se descarga y Android te pide tocar «Instalar».
+          {:else}
+            Antes de instalar se guarda un respaldo de tus datos.
+          {/if}
+        </small>
+      {:else}
+        <strong>Actualiza la app del celular</strong>
+        <small>El PC tiene una versión más nueva ({actualizacion.pcMasNuevo}). Pide el APK nuevo para que sigan entendiéndose bien.</small>
+      {/if}
+      {#if actualizacion.instalando && !esCelular}
         <div class="barra"><span style:width="{actualizacion.progreso ?? 8}%"></span></div>
       {/if}
     </div>
     {#if !actualizacion.instalando}
       <button class="btn btn-blanco" onclick={() => (oculto = true)}>Después</button>
-      <button class="btn btn-primario" onclick={instalar}>Actualizar</button>
+      {#if actualizacion.nueva}<button class="btn btn-primario" onclick={instalar}>Actualizar</button>{/if}
     {/if}
   </div>
 {/if}

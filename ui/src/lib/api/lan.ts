@@ -187,6 +187,17 @@ export class ApiLan extends ApiTauri {
     return this.vincular([host], Number(p) || 47321, codigo.trim(), '', nombre);
   }
 
+  async versionPc() {
+    const cfg = this.cfg;
+    if (!cfg) return null;
+    try {
+      const r = await pedir(cfg, 'GET', '/api/ping', null);
+      return (r.datos?.version as string | undefined) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   override desvincular() {
     this.cfg = null;
     guardarConfigLan(null);

@@ -1,0 +1,175 @@
+name: Versión
+
+# Con una etiqueta v* (git tag -a v1.0.1 -m "qué cambió" && git push --tags) compila el instalador de Windows y el APK del
+# celular, los firma, y los publica en el repositorio público de versiones, de donde las apps se actualizan.
+# A mano (workflow_dispatch) solo compila y deja los archivos como «artifact» (sin publicar).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      # SQLCipher (OpenSSL incluido), el llavero de Windows y las rutas: se prueban en Windows de verdad
+      - name: Pruebas del núcleo
+        run: cargo test -p libreria-core
+      - name: Pruebas de la app
+        run: cargo test -p libreria-app
+
+      - name: Interfaz
+        working-directory: ui
+        run: npm ci
+      - name: Instalador
+        run: |
+          npm install -g @tauri-apps/cli@2
+          tauri build --ci
+        working-directory: app
+
+      - name: Ordenar el instalador
+        shell: bash
+        run: |
+          mkdir salida
+          exe=$(ls target/release/bundle/nsis/*-setup.exe | head -1)
+          version=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          cp "$exe" "salida/Libreria-SIGLO-XXI-${version}-setup.exe"
+          cp "$exe.sig" "salida/Libreria-SIGLO-XXI-${version}-setup.exe.sig"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          ls -la salida
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: instalador-${{ env.VERSION }}
+          path: salida/*
+          if-no-files-found: error
+
+      # Instalar de verdad, abrir la app y comprobar que sigue viva
+      - name: Prueba de humo
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem salida\*-setup.exe | Select-Object -First 1
+          $inst = Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait -PassThru
+          Write-Host "Instalador terminó con código $($inst.ExitCode)"
+          # dónde quedó: se busca el programa en las carpetas de instalación de este usuario y del equipo
+          $raices = @($env:LOCALAPPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ -and (Test-Path $_) }
+          $app = $raices | ForEach-Object { Get-ChildItem $_ -Recurse -Filter '*.exe' -ErrorAction SilentlyContinue } |
+            Where-Object { $_.Name -match 'libreria|SIGLO' -and $_.Name -notmatch 'unins|uninstall|setup' } | Select-Object -First 1
+          if (-not $app) {
+            Get-ChildItem $env:LOCALAPPDATA -Directory | Out-Host
+            Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Select-Object DisplayName, InstallLocation | Out-Host
+            throw 'No se encontró la app instalada'
+          }
+          Write-Host "Instalada en $($app.FullName)"
+          $p = Start-Process -FilePath $app.FullName -PassThru
+          Start-Sleep -Seconds 25
+          $p.Refresh()
+          if ($p.HasExited) { throw "La app se cerró sola (código $($p.ExitCode))" }
+          Write-Host "La app sigue abierta (PID $($p.Id)); ventana: '$($p.MainWindowTitle)'"
+          Stop-Process -Id $p.Id -Force
+
+  android:
+    name: Celular (APK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Android SDK y NDK
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Interfaz
+        working-directory: ui
+        run: npm ci
+      - name: Compilar el APK
+        working-directory: app
+        run: |
+          npm install -g @tauri-apps/cli@2
+          tauri android build --apk --target aarch64 --target armv7
+      - name: Firmar
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          SIGLO_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/siglo.jks"
+          version=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          sin_firma=$(ls app/src-tauri/gen/android/app/build/outputs/apk/universal/release/*-unsigned.apk | head -1)
+          mkdir salida
+          "$BT/zipalign" -f -p 4 "$sin_firma" "$RUNNER_TEMP/alineado.apk"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/siglo.jks" --ks-key-alias siglo-xxi \
+            --ks-pass env:SIGLO_PASS --key-pass env:SIGLO_PASS --out "salida/Libreria-SIGLO-XXI-${version}.apk" "$RUNNER_TEMP/alineado.apk"
+          "$BT/apksigner" verify --print-certs "salida/Libreria-SIGLO-XXI-${version}.apk" | head -3
+          rm -f "$RUNNER_TEMP/siglo.jks"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          ls -la salida
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ env.VERSION }}
+          path: salida/*
+          if-no-files-found: error
+
+  publicar:
+    name: Publicar la versión
+    needs: [windows, android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: descargas
+      - name: Crear el Release en el repositorio público
+        env:
+          GH_TOKEN: ${{ secrets.VERSIONES_TOKEN }}
+          ETIQUETA: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::Falta el secreto VERSIONES_TOKEN: no se publicó. Usa scripts/publicar.sh ${ETIQUETA#v} o agrega el secreto."
+            exit 0
+          fi
+          version="${ETIQUETA#v}"
+          [ "$version" = "$(node -p "require('./app/src-tauri/tauri.conf.json').version")" ] || { echo "La etiqueta $ETIQUETA no coincide con la versión de tauri.conf.json" >&2; exit 1; }
+          notas=$(git for-each-ref "refs/tags/$ETIQUETA" --format='%(contents)' | sed '/^-----BEGIN PGP/,$d')
+          [ -n "$notas" ] || notas="Versión $version"
+          publico="lizarbe513/libreria-siglo-xxi-versiones"
+          base="https://github.com/$publico/releases/download/$ETIQUETA"
+          exe=$(ls descargas/instalador-*/*-setup.exe | head -1)
+          apk=$(ls descargas/apk-*/*.apk | head -1)
+          mkdir publicar
+          cp "$exe" "$exe.sig" "$apk" publicar/
+          node scripts/latest-json.mjs "$version" "$exe" "$exe.sig" "$base/$(basename "$exe")" "$notas"
+          node scripts/latest-android-json.mjs "$version" "$apk" "$base/$(basename "$apk")" "$notas"
+          cp latest.json latest-android.json publicar/
+          gh release create "$ETIQUETA" publicar/* -R "$publico" --title "Librería SIGLO XXI $version" --notes "$notas"
+          echo "Publicada: https://github.com/$publico/releases/tag/$ETIQUETA"

@@ -174,7 +174,9 @@ async fn ping(EstadoAxum(comp): EstadoAxum<Arc<Compartido>>) -> Response {
     let app = comp.app.clone();
     let tienda = bloqueando(move || con_abierta(&app, |a| Ok(a.lib.meta.tienda.clone()))).await.ok();
     let huella = comp.huella.lock().map(|h| h.clone()).unwrap_or_default();
-    Json(json!({ "ok": tienda.is_some(), "tienda": tienda, "huella": huella })).into_response()
+    // la versión del PC: la app del celular avisa si ella es más vieja (deben hablar el mismo idioma)
+    let version = comp.app.package_info().version.to_string();
+    Json(json!({ "ok": tienda.is_some(), "tienda": tienda, "huella": huella, "version": version })).into_response()
 }
 
 #[derive(Deserialize)]

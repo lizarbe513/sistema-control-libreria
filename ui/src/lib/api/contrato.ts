@@ -147,6 +147,8 @@ export interface Api {
   /** Ejecuta una propuesta de la asistente (con los permisos de quien confirma). */
   asistenteConfirmar(id: string, extra: ExtraConfirmacion): Promise<Confirmado>;
   asistenteDescartar(id: string): Promise<void>;
+  /** Solo en el celular: la versión de la app del PC con la que está vinculado (null si no responde). */
+  versionPc?(): Promise<string | null>;
   /** Pide dónde guardar y escribe el CSV. Devuelve la ruta (o null si se cancela). */
   exportarReporte(tipo: TipoCsv, c: ConsultaReporte, nombreSugerido: string): Promise<string | null>;
 

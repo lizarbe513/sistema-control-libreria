@@ -129,7 +129,7 @@
   {#key encargosUI.carta}<CartaLlego carta={encargosUI.carta} />{/key}
 {/if}
 
-{#if sesion.usuaria && !movil}<AvisoActualizacion />{/if}
+{#if sesion.usuaria}<AvisoActualizacion />{/if}
 
 {#if app.toast}
   <div class="toast" transition:fly={{ y: 30, duration: 300 }} role="status">{app.toast}</div>

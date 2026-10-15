@@ -15,7 +15,7 @@
   import AsistenteConfig from '../componentes/AsistenteConfig.svelte';
   import { inventario } from '../inventario.svelte';
   import { avisoActivo, avisarLectura, fijarAviso } from '../escaner';
-  import { actualizacion, hayActualizador, revisar, versionActual } from '../actualizacion.svelte';
+  import { actualizacion, esCelular, hayActualizador, revisar, versionActual } from '../actualizacion.svelte';
   import { onMount } from 'svelte';
 
   onMount(() => void versionActual());
@@ -171,7 +171,7 @@
   {#if hayActualizador}
     <section class="vidrio bloque">
       <h2 class="titulo-seccion">Versión y actualizaciones</h2>
-      <p class="atenuado">Versión instalada: <b>{actualizacion.version || '—'}</b>. Al abrir la app se busca sola; antes de instalar una nueva se guarda un respaldo.</p>
+      <p class="atenuado">Versión instalada: <b>{actualizacion.version || '—'}</b>. Al abrir la app se busca sola.{esCelular ? ' Android te pide tocar «Instalar».' : ' Antes de instalar una nueva se guarda un respaldo.'}</p>
       <div class="anims">
         <button class="btn btn-blanco" onclick={() => revisar(true)} disabled={actualizacion.revisando}>{actualizacion.revisando ? 'Buscando…' : 'Buscar actualizaciones'}</button>
         {#if actualizacion.ultima === 'al-dia'}<span class="atenuado">✓ Ya tienes la última versión.</span>{/if}
