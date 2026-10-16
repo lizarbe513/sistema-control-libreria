@@ -6,7 +6,7 @@
   import Libreta from './lib/componentes/Libreta.svelte';
   import Navegacion from './lib/componentes/Navegacion.svelte';
   import PanelLibro from './lib/componentes/PanelLibro.svelte';
-  import { app, fondoEfectivo } from './lib/estado.svelte';
+  import { app, avisar, fondoEfectivo } from './lib/estado.svelte';
   import { motor } from './lib/fondo/motor';
   import { fuentesListas, limpiarCache } from './lib/portada';
   import Ajustes from './lib/vistas/Ajustes.svelte';
@@ -39,8 +39,31 @@
       listo = true;
     });
     const reloj = setInterval(() => (app.hora = new Date().getHours()), 60_000);
-    return () => clearInterval(reloj);
+
+    // Errores que no pasan por el render (promesas, eventos): se avisan en vez de pasar en silencio.
+    const alError = (e: ErrorEvent) => avisar(`Error: ${e.message}`);
+    const alRechazo = (e: PromiseRejectionEvent) => avisar(`Error: ${e.reason?.message ?? e.reason}`);
+    // shortcut: tras un aviso de Windows (UAC) el visor puede quedar sin repintar; se fuerza un cuadro al volver, confirmar en Windows.
+    const repintar = () => {
+      const raiz = document.getElementById('app');
+      if (!raiz) return;
+      raiz.style.opacity = '0.999';
+      requestAnimationFrame(() => (raiz.style.opacity = ''));
+    };
+    window.addEventListener('error', alError);
+    window.addEventListener('unhandledrejection', alRechazo);
+    window.addEventListener('focus', repintar);
+    document.addEventListener('visibilitychange', repintar);
+    return () => {
+      clearInterval(reloj);
+      window.removeEventListener('error', alError);
+      window.removeEventListener('unhandledrejection', alRechazo);
+      window.removeEventListener('focus', repintar);
+      document.removeEventListener('visibilitychange', repintar);
+    };
   });
+
+  const detalle = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
   // Tema nocturno con el cielo estrellado; el fondo quieto usa una imagen CSS.
   $effect(() => {
@@ -69,6 +92,7 @@
 
 <FondoAnimado />
 
+<svelte:boundary onerror={(e) => console.error(e)}>
 {#if !listo || sesion.cargando}
   <div class="cargando">📚</div>
 {:else if sesion.error}
@@ -93,6 +117,7 @@
     <main class="centro" data-vacio>
       {#key app.vista}
         <div class="vista" in:fly={{ y: 14, duration: 350 }} data-vacio>
+          <svelte:boundary onerror={(e) => console.error(e)}>
           {#if app.vista === 'inicio'}
             <Inicio />
           {:else if app.vista === 'buscar'}
@@ -114,6 +139,14 @@
           {:else}
             <Pendiente vista={app.vista} />
           {/if}
+          {#snippet failed(error, reset)}
+            <div class="fallo vidrio">
+              <p>😿 Algo falló en esta pantalla.</p>
+              <small>{detalle(error)}</small>
+              <button class="btn btn-primario" onclick={reset}>Reintentar</button>
+            </div>
+          {/snippet}
+          </svelte:boundary>
         </div>
       {/key}
     </main>
@@ -125,6 +158,13 @@
   </div>
   {#if !(app.enfoque && app.vista === 'tienda')}<Libreta />{/if}
 {/if}
+{#snippet failed(error, reset)}
+  <div class="cargando error-arranque">
+    <p>😿 Algo falló en la interfaz:<br /><strong>{detalle(error)}</strong></p>
+    <button class="btn btn-primario" onclick={reset}>Reintentar</button>
+  </div>
+{/snippet}
+</svelte:boundary>
 
 {#if encargosUI.carta && sesion.usuaria}
   {#key encargosUI.carta}<CartaLlego carta={encargosUI.carta} />{/key}
@@ -143,6 +183,7 @@
     height: 100%;
     display: grid;
     grid-template-columns: 268px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr); /* sin esto la fila crece con el menú y el perfil se sale de la pantalla */
     gap: 18px;
     padding: 18px 18px 18px 30px;
   }
@@ -196,6 +237,20 @@
     text-align: center;
     animation: none;
     padding: 24px;
+  }
+  .fallo {
+    margin: 40px auto;
+    max-width: 460px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+  }
+  .fallo small {
+    color: var(--muted);
+    overflow-wrap: anywhere;
   }
   .toast {
     position: fixed;

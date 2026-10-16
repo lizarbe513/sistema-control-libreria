@@ -172,13 +172,13 @@ fn con_duena<T>(estado: &State<Estado>, f: impl FnOnce(&mut crate::estado::Abier
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn celulares_estado(estado: State<Estado>, cel: State<Celulares>) -> Res<EstadoCelulares> {
     con_duena(&estado, |a| estado_de(&cel, a))
 }
 
 /// Enciende o apaga el servidor (se recuerda para la próxima vez).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn celulares_activar(estado: State<Estado>, cel: State<Celulares>, activo: bool) -> Res<EstadoCelulares> {
     con_duena(&estado, |a| {
         escribir(&a.lib.conn, "celulares_activo", if activo { "1" } else { "0" })?;
@@ -212,7 +212,7 @@ fn codificar(t: &str) -> String {
 }
 
 /// Un código nuevo para vincular un celular, con su QR (de un solo uso, vale 5 minutos).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn celulares_codigo(estado: State<Estado>, cel: State<Celulares>) -> Res<CodigoVinculo> {
     let tienda = con_duena(&estado, |a| Ok(a.lib.meta.tienda.clone()))?;
     let puerto = cel
@@ -233,7 +233,7 @@ pub fn celulares_codigo(estado: State<Estado>, cel: State<Celulares>) -> Res<Cod
     Ok(CodigoVinculo { codigo, segundos, texto, svg })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn celulares_desconectar(estado: State<Estado>, cel: State<Celulares>, id: i64) -> Res<EstadoCelulares> {
     con_duena(&estado, |a| {
         let yo = a.usuaria()?;

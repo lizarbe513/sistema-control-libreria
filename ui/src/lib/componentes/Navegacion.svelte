@@ -16,26 +16,33 @@
     { id: 'tienda', nombre: 'Mi tienda', icono: 'estante' },
     { id: 'ajustes', nombre: 'Ajustes', icono: 'ajustes' },
   ];
+
+  // Con poca altura la radio se reduce a su botón para que el menú y el perfil quepan.
+  let alto = $state(window.innerHeight);
 </script>
 
+<svelte:window bind:innerHeight={alto} />
+
 <div class="lateral">
-  <Radio />
+  <Radio compacta={alto < 800} />
 
   <nav class="vidrio menu">
-    <div class="marca">
-      <span class="logo">📚</span>
-      <div>
-        <strong>SIGLO XXI</strong>
-        <span>Librería</span>
+    <div class="items">
+      <div class="marca">
+        <span class="logo">📚</span>
+        <div>
+          <strong>SIGLO XXI</strong>
+          <span>Librería</span>
+        </div>
       </div>
+      {#each ITEMS as item}
+        <button class="item" class:activo={app.vista === item.id} onclick={() => (app.vista = item.id)} aria-current={app.vista === item.id ? 'page' : undefined}>
+          <Icono nombre={item.icono} tam={20} />
+          <span>{item.nombre}</span>
+          {#if item.badge}<span class="badge">{item.badge}</span>{/if}
+        </button>
+      {/each}
     </div>
-    {#each ITEMS as item}
-      <button class="item" class:activo={app.vista === item.id} onclick={() => (app.vista = item.id)} aria-current={app.vista === item.id ? 'page' : undefined}>
-        <Icono nombre={item.icono} tam={20} />
-        <span>{item.nombre}</span>
-        {#if item.badge}<span class="badge">{item.badge}</span>{/if}
-      </button>
-    {/each}
 
     <div class="pie">
       <div class="avatar">{app.usuario[0] ?? '🌸'}</div>
@@ -63,6 +70,15 @@
     gap: 4px;
     padding: 16px 12px 12px;
     min-height: 0;
+  }
+  /* solo esto se desplaza si no cabe: el perfil de abajo siempre queda a la vista */
+  .items {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
   .marca {
     display: flex;
@@ -148,7 +164,8 @@
     color: var(--primary-strong);
   }
   .pie {
-    margin-top: auto;
+    flex: none;
+    margin-top: 4px;
     display: flex;
     align-items: center;
     gap: 10px;

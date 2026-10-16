@@ -13,3 +13,10 @@ const app = mount(App, {
 });
 
 export default app;
+
+// En la versión instalada no hay menú del navegador (Atrás, Recargar, Inspeccionar); en los campos de texto se conserva para copiar y pegar.
+if (import.meta.env.PROD) {
+  addEventListener('contextmenu', (e) => {
+    if (!(e.target instanceof HTMLElement && e.target.closest('input, textarea, [contenteditable]'))) e.preventDefault();
+  });
+}
