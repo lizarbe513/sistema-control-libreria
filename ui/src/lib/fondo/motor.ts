@@ -68,7 +68,9 @@ export class Motor {
     const cambioCalidad = rendimiento !== this.rendimiento;
     this.rendimiento = rendimiento;
     this.redimensionar(cambioCalidad);
-    const id = app.enfoque ? 'quieto' : fondoEfectivo(); // en modo enfoque, todo el rendimiento al 3D
+    const efectivo = fondoEfectivo();
+    // sin escena en modo enfoque (todo el rendimiento al 3D), en modo rendimiento y en el fondo estático nocturno
+    const id = app.enfoque || rendimiento || efectivo === 'quietonoche' ? 'quieto' : efectivo;
     if (id !== this.escenaId || cambioCalidad) {
       this.escena?.destruir?.();
       this.escenaId = id;

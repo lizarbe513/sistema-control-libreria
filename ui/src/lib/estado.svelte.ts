@@ -4,7 +4,7 @@ import type { Libro } from './datos';
 export type Vista = 'inicio' | 'buscar' | 'libros' | 'vender' | 'encargos' | 'reportes' | 'asistente' | 'tienda' | 'ajustes' | 'escanear' | 'mas' | 'nuevo';
 export type FondoId = 'petalos' | 'estanque' | 'cielo';
 export type AnimLibro = 'aleatoria' | 'caida' | 'estante' | 'pluma' | 'trompo' | 'pop' | 'volteo';
-export type FondoOpcion = FondoId | 'hora' | 'quieto';
+export type FondoOpcion = FondoId | 'hora' | 'quieto' | 'quietonoche';
 
 /**
  * Preferencias de cada usuaria: se guardan en la base cifrada (no en el navegador, que queda en disco sin
@@ -47,7 +47,7 @@ export const leer = <T>(clave: string, defecto: T): T => {
 
 export const guardar = (clave: string, valor: unknown) => {
   if (!SINCRONIZADAS.has(clave)) return guardarEquipo(clave, valor);
-  preferencias[clave] = structuredClone(valor);
+  preferencias[clave] = structuredClone($state.snapshot(valor)); // snapshot: structuredClone no admite el proxy de $state
   if (TAMBIEN_EN_EQUIPO.has(clave)) guardarEquipo(clave, valor);
   alGuardarPreferencia?.(clave, preferencias[clave]);
 };
@@ -94,7 +94,7 @@ export function olvidarPreferencias() {
 }
 
 /** Fondo que realmente se muestra (resuelve "según la hora"). */
-export function fondoEfectivo(): FondoId | 'quieto' {
+export function fondoEfectivo(): FondoId | 'quieto' | 'quietonoche' {
   if (app.fondo !== 'hora') return app.fondo;
   const h = app.hora;
   if (h >= 6 && h < 17) return 'petalos';

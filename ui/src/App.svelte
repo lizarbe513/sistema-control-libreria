@@ -45,8 +45,9 @@
   // Tema nocturno con el cielo estrellado; el fondo quieto usa una imagen CSS.
   $effect(() => {
     const f = fondoEfectivo();
-    document.documentElement.dataset.tema = f === 'cielo' ? 'noche' : 'dia';
+    document.documentElement.dataset.tema = f === 'cielo' || f === 'quietonoche' ? 'noche' : 'dia';
     document.documentElement.dataset.fondo = f;
+    document.documentElement.toggleAttribute('data-rendimiento', app.calma.rendimiento);
   });
 
   // El fondo solo recibe clics en zonas vacías: el lienzo o contenedores marcados con data-vacio.

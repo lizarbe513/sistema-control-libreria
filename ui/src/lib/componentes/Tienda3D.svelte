@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { untrack } from 'svelte';
   import { app } from '../estado.svelte';
   import { EscenaTienda } from '../tienda/escena';
   import { infoTipo, ruta, ubicacionDe, type UbicacionResuelta } from '../tienda/modelo';
@@ -28,17 +28,21 @@
   let sinWebGL = $state(false);
   const plano = $derived(sinWebGL || app.calma.rendimiento);
 
-  onMount(() => {
-    if (plano) return;
+  // La escena nace y muere con el visor: al activar el modo rendimiento (plano) se destruye, al desactivarlo se recrea.
+  $effect(() => {
+    if (plano || !canvas || !contenedor) return;
+    let e: EscenaTienda;
     try {
-      escena = new EscenaTienda(canvas, contenedor, 'visor');
-      // solo en desarrollo: permite a las pruebas automáticas leer la cámara
-      if (import.meta.env.DEV) Object.assign(window, { __visorTienda: escena });
+      e = new EscenaTienda(canvas, contenedor, 'visor');
     } catch {
       sinWebGL = true;
+      return;
     }
+    escena = e;
+    // solo en desarrollo: permite a las pruebas automáticas leer la cámara
+    if (import.meta.env.DEV) Object.assign(window, { __visorTienda: e });
     return () => {
-      escena?.destruir();
+      e.destruir();
       escena = null;
     };
   });

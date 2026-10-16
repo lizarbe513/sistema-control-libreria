@@ -37,6 +37,13 @@
       muestra: 'linear-gradient(135deg,#FDF3F6,#E9E3FB)',
       detalle: 'Sin animación, ideal para PCs lentos',
     },
+    {
+      id: 'quietonoche',
+      nombre: 'Noche quieta',
+      emoji: '🌙',
+      muestra: 'linear-gradient(135deg,#181432,#2A2050)',
+      detalle: 'Modo oscuro sin animación',
+    },
   ];
 </script>
 

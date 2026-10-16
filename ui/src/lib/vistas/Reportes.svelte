@@ -1,6 +1,7 @@
 <script lang="ts">
   // Reportes (solo la Dueña): ventas por período, caja, más vendidos, categorías, tipos de cliente y libros sin movimiento.
   import { api, type Reporte, type TipoCsv } from '../api';
+  import Esqueleto from '../componentes/Esqueleto.svelte';
   import GraficoBarras from '../componentes/GraficoBarras.svelte';
   import IconoMetodo from '../componentes/IconoMetodo.svelte';
   import { soles } from '../datos';
@@ -218,7 +219,7 @@
         {/if}
       </section>
     {:else if cargando}
-      <p class="atenuado">Calculando…</p>
+      <Esqueleto n={3} alto={96} />
     {/if}
   {/if}
 </div>

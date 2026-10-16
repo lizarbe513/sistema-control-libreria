@@ -78,6 +78,14 @@ body {
     linear-gradient(#fdf3f6, #fbe0e8);
 }
 
+/* Fondo quieto nocturno: estático, sin animación */
+:root[data-fondo='quietonoche'] body {
+  background:
+    radial-gradient(circle at 80% 10%, rgba(120, 86, 170, 0.45), transparent 45%),
+    radial-gradient(circle at 10% 92%, rgba(60, 90, 140, 0.4), transparent 45%),
+    linear-gradient(#181432, #2a2050);
+}
+
 #app {
   height: 100%;
 }
@@ -201,7 +209,25 @@ button {
 
 /* Rendimiento: el desenfoque de vidrio se recalcula en cada cuadro del fondo animado
    (3× más lento). Con fondo animado se reemplaza por un vidrio más opaco. */
-:root:not([data-fondo='quieto']) * {
+:root:not([data-fondo='quieto']):not([data-fondo='quietonoche']) * {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+/* Modo rendimiento: solo lo básico para trabajar, sin animaciones, desenfoques ni sombras.
+   Duración casi nula (no `none`) para que sigan disparándose los eventos de fin de animación. */
+:root[data-rendimiento] *,
+:root[data-rendimiento] *::before,
+:root[data-rendimiento] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0s !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  text-shadow: none !important;
+}
+:root[data-rendimiento] *:not(:focus-visible) {
+  box-shadow: none !important;
 }

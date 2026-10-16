@@ -4,6 +4,7 @@
   import { tienda } from '../tienda/tienda.svelte';
   import { flip } from 'svelte/animate';
   import { fly } from 'svelte/transition';
+  import Esqueleto from '../componentes/Esqueleto.svelte';
   import Icono from '../componentes/Icono.svelte';
   import { api } from '../api';
   import { CATEGORIAS, soles, type CategoriaId, type Libro } from '../datos';
@@ -207,7 +208,7 @@
       {/each}
     </div>
   {:else if cargando}
-    <p class="atenuado">Buscando…</p>
+    <Esqueleto n={4} alto={84} />
   {:else if !buscando && total === 0}
     <div class="no-encontrado" in:fly={{ y: 16, duration: 400 }}>
       <div class="vacio">📚</div>

@@ -3,6 +3,7 @@
   import { onDestroy } from 'svelte';
   import { api, type Filtros } from '../api';
   import FormLibro from '../componentes/FormLibro.svelte';
+  import Esqueleto from '../componentes/Esqueleto.svelte';
   import Icono from '../componentes/Icono.svelte';
   import { cat, soles, type Libro } from '../datos';
   import { app, avisar } from '../estado.svelte';
@@ -100,7 +101,9 @@
     </div>
   </div>
 
-  {#if !cargando && !libros.length}
+  {#if cargando && !libros.length}
+    <Esqueleto n={7} alto={68} />
+  {:else if !cargando && !libros.length}
     <div class="vacio vidrio">
       <span>📚</span>
       {#if consulta || categoria || filtro !== 'todos'}
