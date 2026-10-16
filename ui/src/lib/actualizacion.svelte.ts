@@ -1,7 +1,7 @@
 // Actualizaciones de la app.
 // · PC (Windows): al abrirse revisa si hay una versión nueva (firmada con la llave del proyecto) y, con un clic, hace un
 //   respaldo, la descarga, la instala y se reinicia.
-// · Celular (Android): revisa latest-android.json del repositorio público de versiones, descarga el APK y abre el
+// · Celular (Android): revisa latest-android.json en la descarga privada de versiones (Cloudflare R2), descarga el APK y abre el
 //   instalador de Android (un toque en «Instalar»). También avisa si el PC tiene una versión más nueva que el celular.
 // Sin internet no molesta.
 import { api } from './api';
@@ -13,7 +13,7 @@ const esAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.
 export const hayActualizador = enTauri && !import.meta.env.DEV;
 export const esCelular = esAndroid;
 
-const URL_ANDROID = 'https://github.com/lizarbe513/libreria-siglo-xxi-versiones/releases/latest/download/latest-android.json';
+const URL_ANDROID = 'https://pub-f41a4d67dc1a41729f716c52c8052735.r2.dev/a80fe818213ab3041cf119499c547661/latest-android.json';
 
 export const actualizacion = $state({
   version: '',

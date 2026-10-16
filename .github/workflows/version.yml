@@ -158,28 +158,40 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: descargas
-      - name: Crear el Release en el repositorio público
+      - name: Subir las versiones a Cloudflare R2 (descarga privada)
         env:
-          GH_TOKEN: ${{ secrets.VERSIONES_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
           ETIQUETA: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::Falta el secreto VERSIONES_TOKEN: no se publicó. Usa scripts/publicar.sh ${ETIQUETA#v} o agrega el secreto."
-            exit 0
+          if [ -z "$R2_ENDPOINT" ] || [ -z "$R2_BUCKET" ] || [ -z "$AWS_ACCESS_KEY_ID" ]; then
+            echo "::error::Faltan los secretos de R2: no se publicó."
+            exit 1
           fi
           version="${ETIQUETA#v}"
           [ "$version" = "$(node -p "require('./app/src-tauri/tauri.conf.json').version")" ] || { echo "La etiqueta $ETIQUETA no coincide con la versión de tauri.conf.json" >&2; exit 1; }
+          # la ruta secreta de descarga sale de la misma dirección que usa la app: así nunca se desincronizan
+          base=$(node -p "require('./app/src-tauri/tauri.conf.json').plugins.updater.endpoints[0].replace(/\/latest\.json$/, '')")
+          clave=${base#https://*/}
           notas=$(git for-each-ref "refs/tags/$ETIQUETA" --format='%(contents)' | sed '/^-----BEGIN PGP/,$d')
           [ -n "$notas" ] || notas="Versión $version"
-          publico="lizarbe513/libreria-siglo-xxi-versiones"
-          base="https://github.com/$publico/releases/download/$ETIQUETA"
           exe=$(ls descargas/instalador-*/*-setup.exe | head -1)
           apk=$(ls descargas/apk-*/*.apk | head -1)
           mkdir publicar
           cp "$exe" "$exe.sig" "$apk" publicar/
-          node scripts/latest-json.mjs "$version" "$exe" "$exe.sig" "$base/$(basename "$exe")" "$notas"
-          node scripts/latest-android-json.mjs "$version" "$apk" "$base/$(basename "$apk")" "$notas"
-          cp latest.json latest-android.json publicar/
-          gh release create "$ETIQUETA" publicar/* -R "$publico" --title "Librería SIGLO XXI $version" --notes "$notas"
-          echo "Publicada: https://github.com/$publico/releases/tag/$ETIQUETA"
+          publica="$base"
+          node scripts/latest-json.mjs "$version" "$exe" "$exe.sig" "$publica/$(basename "$exe")" "$notas"
+          node scripts/latest-android-json.mjs "$version" "$apk" "$publica/$(basename "$apk")" "$notas"
+          mv latest.json latest-android.json publicar/
+          # nombres fijos: la clienta guarda un solo enlace y siempre baja la última versión
+          cp "$exe" "publicar/Libreria-SIGLO-XXI-setup.exe"
+          cp "$apk" "publicar/Libreria-SIGLO-XXI.apk"
+          # los instaladores primero y el latest.json al final: nadie ve una versión nueva a medias
+          for f in publicar/*-setup.exe publicar/*-setup.exe.sig publicar/*.apk publicar/latest-android.json publicar/latest.json; do
+            aws s3 cp "$f" "s3://$R2_BUCKET/$clave/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" --only-show-errors
+          done
+          echo "Publicada la versión $version en $publica/"
