@@ -1,5 +1,6 @@
 <script lang="ts">
   // Cobro de la venta: uno o varios pagos (efectivo con vuelto, tarjeta, Yape/Plin, transferencia).
+  import { ajustesUI } from '../ajustes.svelte';
   import { alAtras } from '../atras.svelte';
   import { fly } from 'svelte/transition';
   import { api, type Metodo, type PagoEntrada, type Venta } from '../api';
@@ -27,6 +28,7 @@
   const hayYape = $derived(pagos.some((p) => p.metodo === 'yape_plin'));
 
   function irAAjustes() {
+    ajustesUI.seccion = 'ventas'; // ahí están los métodos de pago y el QR de Yape
     app.vista = 'ajustes';
     onCerrar();
   }

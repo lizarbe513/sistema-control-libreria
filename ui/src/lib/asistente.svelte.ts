@@ -1,7 +1,7 @@
 // La conversación con el asistente: solo en memoria (no se guarda en disco) y de la persona que la empezó.
-import { tick } from 'svelte';
 import { api, type AccionAsistente, type Confirmado, type ResultadoLinea } from './api';
 import type { Libro } from './datos';
+import { ajustesUI } from './ajustes.svelte';
 import { app } from './estado.svelte';
 import { encargosUI } from './encargos.svelte';
 import { vista } from './inventario.svelte';
@@ -95,11 +95,8 @@ export async function irA(destino: string) {
     encargosUI.pestana = 'clientes';
     app.vista = 'encargos';
   } else if (k === 'ajustes') {
+    if (v) ajustesUI.seccion = v; // usuarios, categorias o asistente: ids de las secciones de Ajustes
     app.vista = 'ajustes';
-    if (v) {
-      await tick();
-      setTimeout(() => document.getElementById(`ajustes-${v}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
-    }
   } else if (['encargos', 'libros', 'reportes', 'vender'].includes(k)) {
     app.vista = k as 'encargos';
   }

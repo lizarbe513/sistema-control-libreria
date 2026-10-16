@@ -88,6 +88,7 @@
   <main class="contenido" data-vacio ontouchstart={tocar} ontouchend={soltar}>
     {#key app.vista}
       <div class="panel" in:fly={{ x: direccion * 50, duration: direccion ? 260 : 0, easing: cubicOut, opacity: 0.2 }} data-vacio>
+        <svelte:boundary onerror={(e) => console.error(e)}>
         {#if app.vista === 'inicio'}
           <Inicio movil />
         {:else if app.vista === 'buscar'}
@@ -107,12 +108,20 @@
         {:else if app.vista === 'mas'}
           <Mas />
         {:else if app.vista === 'ajustes'}
-          <Ajustes />
+          <Ajustes movil />
         {:else if app.vista === 'escanear'}
           <Escanear />
         {:else}
           <Pendiente vista={app.vista} />
         {/if}
+        {#snippet failed(error, reset)}
+          <div class="fallo">
+            <p>😿 Algo falló en esta pantalla.</p>
+            <small>{error instanceof Error ? error.message : String(error)}</small>
+            <button class="btn btn-primario" onclick={reset}>Reintentar</button>
+          </div>
+        {/snippet}
+        </svelte:boundary>
       </div>
     {/key}
   </main>
@@ -141,6 +150,18 @@
 </div>
 
 <style>
+  .fallo {
+    margin: 40px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+  }
+  .fallo small {
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
   .movil {
     position: relative;
     z-index: 1;

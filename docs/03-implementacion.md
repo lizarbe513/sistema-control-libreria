@@ -497,7 +497,7 @@ ejecuta con los permisos de quien pregunta:
 | 6. Respaldos y configuración | Respaldo automático y manual con carpeta externa, restaurar, cambiar la contraseña maestra, «olvidé mi PIN» | ✅ |
 | 7. Celular | Servidor LAN (HTTPS), vinculación por QR, guardar libros por ISBN, título leído con la cámara o escrito, app Android inmersiva con «atrás» y deslizar | ✅ |
 | 8. Asistente IA | Bibliotecaria virtual: Gemini + Groq, herramientas sobre inventario, encargos y reportes (dinero solo para la Dueña), recomendaciones de internet con «Encargar», acciones con confirmación (sin eliminar), sin datos de clientes | ✅ (probado con claves reales); acciones e internet: falta probarlas en la tienda |
-| 9. Entrega | Instalador de Windows (GitHub Actions, firmado, con prueba de humo), actualización automática de PC y celular, publicación al etiquetar; guía en `docs/04-entrega.md` | ✅ v1.0.0 publicada; v1.1.0 preparada (fondo «Noche quieta», modo rendimiento arreglado, esqueletos de carga, icono propio) para probar la actualización automática; falta la prueba en el PC de la tienda |
+| 9. Entrega | Instalador de Windows (GitHub Actions, firmado, con prueba de humo), actualización automática de PC y celular, publicación al etiquetar; guía en `docs/04-entrega.md` | ✅ v1.0.0 publicada; v1.1.0 preparada (fondo «Noche quieta», modo rendimiento arreglado, esqueletos de carga, icono propio, menú lateral ajustado a ventanas bajas, red de seguridad contra pantallas vacías, Ajustes rediseñado estilo Android) para probar la actualización automática; falta la prueba en el PC de la tienda |
 
 ## Cómo se probó (hitos 1 a 6)
 - **`cargo test -p libreria-core`:** 63 tests, más 2 con red. Cubren:
