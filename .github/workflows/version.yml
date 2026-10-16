@@ -177,6 +177,8 @@ jobs:
           # la ruta secreta de descarga sale de la misma dirección que usa la app: así nunca se desincronizan
           base=$(node -p "require('./app/src-tauri/tauri.conf.json').plugins.updater.endpoints[0].replace(/\/latest\.json$/, '')")
           clave=${base#https://*/}
+          # el checkout puede traer el tag sin su mensaje: se trae el objeto del tag para leer las notas de la versión
+          git fetch -q --force origin "refs/tags/$ETIQUETA:refs/tags/$ETIQUETA"
           notas=$(git for-each-ref "refs/tags/$ETIQUETA" --format='%(contents)' | sed '/^-----BEGIN PGP/,$d')
           [ -n "$notas" ] || notas="Versión $version"
           exe=$(ls descargas/instalador-*/*-setup.exe | head -1)
