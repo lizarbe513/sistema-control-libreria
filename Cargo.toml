@@ -6,7 +6,7 @@ members = ["crates/core", "app/src-tauri"]
 edition = "2024"
 version = "0.1.0"
 authors = ["leonardo lizarbe tito <leonardo.lizarbe.tito.1010@gmail.com>"]
-license = "UNLICENSED"
+license = "MIT"
 
 [profile.dev.package."*"]
 # las dependencias (SQLCipher, argon2, imagen) compiladas con optimización: los tests y la app van más rápido

@@ -2,9 +2,9 @@
 
 ## Cómo se publica una versión (para quien mantiene el proyecto)
 
-El código vive en un repositorio **privado** de GitHub (`lizarbe513/libreria-siglo-xxi`). Los instaladores se publican
-en uno **público solo de versiones** (`lizarbe513/libreria-siglo-xxi-versiones`), sin código: de ahí los descarga la
-tienda y las propias apps para actualizarse.
+El código y los instaladores viven en el mismo repositorio público de GitHub
+(`lizarbe513/sistema-control-libreria`). Cada versión es un **Release** con el instalador de Windows, el APK y sus
+`latest.json` / `latest-android.json`: de ahí los descarga la tienda y las propias apps para actualizarse.
 
 1. Subir `version` en `app/src-tauri/tauri.conf.json` (por ejemplo, `1.0.1`) y hacer commit.
 2. `git push && git tag -a v1.0.1 -m "Qué cambió en esta versión" && git push --tags`. El texto de la etiqueta son las
@@ -12,21 +12,17 @@ tienda y las propias apps para actualizarse.
 3. GitHub Actions (`.github/workflows/version.yml`) hace todo solo:
    - **Windows:** pruebas del núcleo y de la app, el instalador firmado y una prueba de humo (lo instala y abre);
    - **Celular:** compila y firma el APK con la llave de Android;
-   - **Publicar:** crea el Release en el repo público con el instalador, el APK y sus `latest.json` /
-     `latest-android.json`. (Si falta el secreto `VERSIONES_TOKEN`, avisa y no publica: `scripts/publicar.sh 1.0.1`
-     lo hace a mano.)
+   - **Publicar:** crea el Release de la etiqueta con el instalador, el APK y sus `latest.json` /
+     `latest-android.json`. Usa el token que GitHub Actions trae de serie: no hace falta ningún secreto extra.
 4. Las apps lo detectan al abrirse:
    - **PC:** «Hay una versión nueva» → Actualizar (hace un respaldo, instala y reinicia).
    - **Celular:** «Hay una versión nueva» → Actualizar → Android pide tocar «Instalar». La primera vez pide permitir
      «instalar apps de esta fuente». Si el PC es más nuevo que el celular, el celular avisa.
 
-**Secretos del repo privado** (Settings → Secrets → Actions):
+**Secretos del repositorio** (Settings → Secrets → Actions):
 - `TAURI_SIGNING_PRIVATE_KEY` y `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: llave que firma las actualizaciones del PC.
 - `ANDROID_KEYSTORE_BASE64` y `ANDROID_KEYSTORE_PASSWORD`: llave que firma el APK (Android solo acepta actualizar con la
   misma llave).
-- `VERSIONES_TOKEN`: token de GitHub con permiso **solo** de escribir en el repo público de versiones (Contents:
-  Read and write). Se crea en GitHub → Settings → Developer settings → Fine-grained tokens → Repository access:
-  *Only select repositories* → `libreria-siglo-xxi-versiones`.
 
 **Llaves:** las originales viven **fuera del repositorio** (`~/.tauri/siglo-xxi-updater.key` y `~/.android/siglo-xxi-release.jks`,
 con sus `.pass`). **Si se pierden no se pueden firmar más actualizaciones** (habría que reinstalar a mano): guardar una
@@ -37,7 +33,7 @@ copia. La pública del actualizador está en `tauri.conf.json`.
 ## Instalar en el PC de la tienda (Windows)
 
 1. Descargar `Libreria-SIGLO-XXI-<versión>-setup.exe` desde
-   <https://github.com/lizarbe513/libreria-siglo-xxi-versiones/releases/latest>.
+   <https://github.com/lizarbe513/sistema-control-libreria/releases/latest>.
 2. Abrirlo. **Windows mostrará «Windows protegió su PC»** (SmartScreen), porque el instalador no tiene la firma de pago
    de una empresa: tocar **«Más información» → «Ejecutar de todas formas»**. Es normal.
 3. Sigue el instalador (en español, no pide contraseña de administrador). Crea el acceso directo en el escritorio y en

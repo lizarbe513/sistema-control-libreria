@@ -1,7 +1,7 @@
 name: Versión
 
 # Con una etiqueta v* (git tag -a v1.0.1 -m "qué cambió" && git push --tags) compila el instalador de Windows y el APK del
-# celular, los firma, y los publica en el repositorio público de versiones, de donde las apps se actualizan.
+# celular, los firma, y los publica como Release de este mismo repositorio, de donde las apps se actualizan.
 # A mano (workflow_dispatch) solo compila y deja los archivos como «artifact» (sin publicar).
 on:
   push:
@@ -151,6 +151,8 @@ jobs:
     needs: [windows, android]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -158,42 +160,26 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: descargas
-      - name: Subir las versiones a Cloudflare R2 (descarga privada)
+      - name: Crear el Release en GitHub
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
-          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          GH_TOKEN: ${{ github.token }}
           ETIQUETA: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          if [ -z "$R2_ENDPOINT" ] || [ -z "$R2_BUCKET" ] || [ -z "$AWS_ACCESS_KEY_ID" ]; then
-            echo "::error::Faltan los secretos de R2: no se publicó."
-            exit 1
-          fi
           version="${ETIQUETA#v}"
           [ "$version" = "$(node -p "require('./app/src-tauri/tauri.conf.json').version")" ] || { echo "La etiqueta $ETIQUETA no coincide con la versión de tauri.conf.json" >&2; exit 1; }
-          # la ruta secreta de descarga sale de la misma dirección que usa la app: así nunca se desincronizan
-          base=$(node -p "require('./app/src-tauri/tauri.conf.json').plugins.updater.endpoints[0].replace(/\/latest\.json$/, '')")
-          clave=${base#https://*/}
           # el checkout puede traer el tag sin su mensaje: se trae el objeto del tag para leer las notas de la versión
           git fetch -q --force origin "refs/tags/$ETIQUETA:refs/tags/$ETIQUETA"
           notas=$(git for-each-ref "refs/tags/$ETIQUETA" --format='%(contents)' | sed '/^-----BEGIN PGP/,$d')
           [ -n "$notas" ] || notas="Versión $version"
           exe=$(ls descargas/instalador-*/*-setup.exe | head -1)
           apk=$(ls descargas/apk-*/*.apk | head -1)
-          mkdir publicar
-          cp "$exe" "$exe.sig" "$apk" publicar/
-          publica="$base"
-          node scripts/latest-json.mjs "$version" "$exe" "$exe.sig" "$publica/$(basename "$exe")" "$notas"
-          node scripts/latest-android-json.mjs "$version" "$apk" "$publica/$(basename "$apk")" "$notas"
-          mv latest.json latest-android.json publicar/
-          # nombres fijos: la clienta guarda un solo enlace y siempre baja la última versión
-          cp "$exe" "publicar/Libreria-SIGLO-XXI-setup.exe"
-          cp "$apk" "publicar/Libreria-SIGLO-XXI.apk"
-          # los instaladores primero y el latest.json al final: nadie ve una versión nueva a medias
-          for f in publicar/*-setup.exe publicar/*-setup.exe.sig publicar/*.apk publicar/latest-android.json publicar/latest.json; do
-            aws s3 cp "$f" "s3://$R2_BUCKET/$clave/$(basename "$f")" --endpoint-url "$R2_ENDPOINT" --only-show-errors
-          done
-          echo "Publicada la versión $version en $publica/"
+          # los latest*.json apuntan a los archivos de este Release (no a «latest»): una versión siempre baja sus propios archivos
+          descarga="https://github.com/${GITHUB_REPOSITORY}/releases/download/$ETIQUETA"
+          node scripts/latest-json.mjs "$version" "$exe" "$exe.sig" "$descarga/$(basename "$exe")" "$notas"
+          node scripts/latest-android-json.mjs "$version" "$apk" "$descarga/$(basename "$apk")" "$notas"
+          # primero como borrador con todo adentro y luego se publica: nadie ve una versión nueva a medias
+          gh release create "$ETIQUETA" --draft --title "Librería SIGLO XXI $version" --notes "$notas" \
+            "$exe" "$exe.sig" "$apk" latest.json latest-android.json
+          gh release edit "$ETIQUETA" --draft=false --latest
+          echo "Publicada la versión $version en https://github.com/${GITHUB_REPOSITORY}/releases/tag/$ETIQUETA"
